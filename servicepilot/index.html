@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ServicePilot — Active Evidence Orchestration</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◆</span>
+      <div>
+        <strong>ServicePilot</strong>
+        <small>Active Evidence Orchestration · Jev + RAEP</small>
+      </div>
+    </div>
+    <dl class="kpis" id="kpis" aria-live="polite"></dl>
+  </header>
+
+  <div class="shell">
+    <nav class="sidenav" aria-label="Ana menü">
+      <a href="#cases" data-view="cases">Vakalar</a>
+      <a href="#new" data-view="new">Yeni Vaka</a>
+      <a href="#queues" data-view="queues">Uzman Kuyrukları</a>
+      <a href="#replay" data-view="replay">Değerlendirme</a>
+      <a href="#policy" data-view="policy">Politika Ayarları</a>
+      <div class="navfoot">
+        <button type="button" class="ghost small" id="reset">Demo verisini sıfırla</button>
+      </div>
+    </nav>
+
+    <main id="main">
+      <!-- Cases -->
+      <section data-panel="cases" class="cases-layout">
+        <aside class="case-list" id="case-list" aria-label="Vaka listesi"></aside>
+        <article class="case-detail" id="case-detail"></article>
+      </section>
+
+      <!-- New case -->
+      <section data-panel="new" hidden>
+        <h1>Yeni servis vakası</h1>
+        <p class="muted">Demo senaryosu seçin veya formu doldurun. ServicePilot ilk kararı tek Jev çağrısıyla verir.</p>
+        <h2>Demo senaryoları</h2>
+        <div class="scenario-grid" id="scenarios"></div>
+
+        <h2>Manuel vaka</h2>
+        <form id="case-form" class="card form" novalidate>
+          <fieldset>
+            <legend>Araç</legend>
+            <div class="row3">
+              <div class="field">
+                <label for="family">Araç ailesi *</label>
+                <input id="family" name="family" required list="families" placeholder="Isuzu NPR 10">
+                <datalist id="families">
+                  <option>Isuzu NPR 10</option><option>Isuzu N-Wide</option><option>Isuzu Novo</option>
+                  <option>Isuzu Novo Lux</option><option>Isuzu Citiport 12</option><option>Isuzu Kendo</option>
+                  <option>Isuzu Novociti Volt</option><option>Isuzu Citivolt 12</option>
+                </datalist>
+              </div>
+              <div class="field">
+                <span class="label" id="fuel-label">Yakıt / tahrik *</span>
+                <div class="radios" role="radiogroup" aria-labelledby="fuel-label">
+                  <label><input type="radio" name="fuel" value="diesel" checked> Dizel</label>
+                  <label><input type="radio" name="fuel" value="electric"> Elektrik</label>
+                </div>
+              </div>
+              <div class="field">
+                <label for="km">Kilometre *</label>
+                <input id="km" name="km" required inputmode="numeric" pattern="\d{1,7}" value="100000">
+              </div>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Vaka</legend>
+            <div class="field">
+              <label for="note">Teknisyen notu *</label>
+              <textarea id="note" name="note" required minlength="3" rows="4" placeholder="Şikayet ve gözlem…"></textarea>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="dtc">DTC kodları</label>
+                <input id="dtc" name="dtc" placeholder="P0562, U0100" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="dtc-help">
+                <span class="hint" id="dtc-help">Virgülle ayırın.</span>
+              </div>
+              <div class="field">
+                <label for="repairs">Son onarımlar</label>
+                <input id="repairs" name="repairs" placeholder="Geçen ay gösterge paneli değişti">
+              </div>
+            </div>
+          </fieldset>
+          <p class="error" id="form-error" role="alert"></p>
+          <button type="submit" class="primary">Vakayı aç ve karar al</button>
+        </form>
+      </section>
+
+      <!-- Queues -->
+      <section data-panel="queues" hidden>
+        <h1>Uzman kuyrukları</h1>
+        <p class="muted">ROUTE edilen vakalar hedef uzmanlığa, ESCALATE edilenler Merkez Uzman Masasına (ProEye) düşer. Üst düğüm kuyrukları hiyerarşik fallback sonucudur.</p>
+        <div class="queues" id="queues"></div>
+      </section>
+
+      <!-- Replay -->
+      <section data-panel="replay" hidden>
+        <h1>Offline replay değerlendirmesi</h1>
+        <p class="muted">Tüm demo senaryoları güncel politika ayarlarıyla, simüle teknisyen cevaplarıyla uçtan uca koşturulur ve baseline'larla karşılaştırılır.</p>
+        <div class="callout">Senaryolar demo için yazılmış <strong>sentetik</strong> vakalardır; Anadolu Isuzu verisi değildir. Sonuçlar doğruluk iddiası değil, değerlendirme altyapısının gösterimidir.</div>
+        <button type="button" class="primary" id="run-replay">Replay çalıştır</button>
+        <div id="replay-out"></div>
+      </section>
+
+      <!-- Policy -->
+      <section data-panel="policy" hidden>
+        <h1>RAEP politika ayarları</h1>
+        <p class="muted">Eşik ve maliyet ağırlıkları kararı değiştirir; Jev çıkarımını değiştirmez. Bir vakada “Güncel ayarlarla yeniden hesapla” Jev'i tekrar çağırmadan kararı günceller.</p>
+        <form id="policy-form" class="card form policy"></form>
+        <div class="card formula">
+          <h2>Formül</h2>
+          <pre>err(s)   = 1 − max p_leaf
+L(s)     = 1 + w_crit · p_crit
+err'(e)  = ρ_e · err_inf(e) + (1 − ρ_e) · err(s)
+C(e)     = α·T_e + β·E_e + γ·S_e
+U(e)     = L(s) · (err(s) − err'(e)) − λ · C(e)</pre>
+          <p class="muted small">Kanıt maliyetleri (T dakika, E efor 1–5, S güvenlik 0–5) ve güvenilirlikler (ρ) uzman <strong>varsayımıdır</strong>; PoC'de gerçek vaka verisiyle kalibre edilecektir.</p>
+          <div id="evidence-catalog"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
