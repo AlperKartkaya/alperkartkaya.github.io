@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>TEBDİL — Cooperative Latent Excursions for Recurrent Reasoning</title>
+  <meta name="description" content="TEBDİL (Cooperative Latent Excursions for Recurrent Reasoning): Inference-time cross-trajectory latent midpoint excursions in looped language models (ByteDance/Ouro-1.4B-Thinking).">
+  <meta name="keywords" content="looped language models, recurrent transformer, Universal Transformer, latent reasoning, Ouro-1.4B-Thinking, cooperative latent excursion, TEBDIL, nonlinear curvature">
+  <meta name="author" content="TEBDİL Research Platform">
+  <meta name="language" content="English">
+  <meta name="theme-color" content="#4338ca">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- MathJax for inline and display LaTeX -->
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+  <style>
+    :root {
+      --rm-primary: #4338ca;          /* indigo-700 */
+      --rm-primary-soft: #6366f1;     /* indigo-500 */
+      --rm-accent: #0ea5e9;           /* sky-500 */
+      --rm-accent-warm: #f59e0b;      /* amber-500 */
+      --rm-violet: #7c3aed;           /* violet-600 */
+      --rm-rose: #e11d48;             /* rose-600 */
+      --rm-emerald: #059669;          /* emerald-600 */
+      --rm-ink: #0f172a;
+      --rm-sub: #475569;
+      --rm-line: #e2e8f0;
+      --rm-bg-soft: #f8fafc;
+      --rm-bg-tint: linear-gradient(180deg, #f5f3ff 0%, #eef2ff 100%);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: #fff;
+      color: var(--rm-ink);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .section { padding: 3rem 1.5rem; }
+    section[id] { scroll-margin-top: 28px; }
+
+    /* ====== HERO ====== */
+    .hero-banner {
+      position: relative;
+      padding: 4.2rem 1.5rem 3rem;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, rgba(99,102,241,0.18), transparent 60%),
+        radial-gradient(800px 400px at 100% 0%, rgba(14,165,233,0.18), transparent 60%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      overflow: hidden;
+      border-bottom: 1px solid var(--rm-line);
+    }
+    .hero-banner::before {
+      content: ""; position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(15,23,42,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15,23,42,0.04) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 80%);
+      pointer-events: none;
+    }
+    .hero-banner > .container { position: relative; }
+    .pub-eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.35rem 0.95rem; border-radius: 999px;
+      background: rgba(99,102,241,0.10);
+      color: var(--rm-primary);
+      font-weight: 600; font-size: 0.85rem; letter-spacing: 0.04em;
+      border: 1px solid rgba(99,102,241,0.25);
+    }
+    .pub-title {
+      font-weight: 800 !important;
+      letter-spacing: -0.025em;
+      background: linear-gradient(120deg, #1e1b4b 0%, #4338ca 45%, #0ea5e9 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-top: 0.9rem !important; margin-bottom: 0.55rem !important;
+      font-size: clamp(1.85rem, 4.1vw, 3.15rem) !important;
+      line-height: 1.12 !important;
+    }
+    .pub-subtitle {
+      color: var(--rm-sub); font-weight: 500;
+      max-width: 900px; margin: 0 auto 1rem;
+      font-size: 1.08rem; line-height: 1.55;
+    }
+    .pub-venue {
+      display: flex; align-items: center; justify-content: center; gap: 0.9rem;
+      margin: 1.2rem auto 0; max-width: 720px;
+      color: var(--rm-sub); font-size: 1.02rem; font-weight: 600;
+    }
+    .pub-venue-line {
+      flex: 1 1 auto; height: 1px; max-width: 120px;
+      background: linear-gradient(90deg, transparent, rgba(67,56,202,0.35));
+    }
+    .pub-venue-line:last-child { background: linear-gradient(90deg, rgba(67,56,202,0.35), transparent); }
+    .pub-venue-text { display: inline-flex; align-items: center; gap: 0.45rem; white-space: nowrap; color: var(--rm-primary); }
+    .pub-venue-ico { display: inline-flex; align-items: center; color: var(--rm-accent-warm); font-size: 1rem; }
+
+    .pub-affil {
+      color: var(--rm-sub); font-size: 0.92rem; margin-top: 0.55rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .pub-links { margin-top: 1.35rem; display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
+    .pub-btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.55rem 1.1rem; border-radius: 999px;
+      background: #0f172a; color: #fff !important; font-weight: 600;
+      font-size: 0.92rem; text-decoration: none;
+      box-shadow: 0 4px 14px rgba(15,23,42,0.18);
+      transition: transform 0.2s ease, background 0.2s ease;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .pub-btn:hover { transform: translateY(-2px); background: var(--rm-primary); }
+    .pub-btn .icon {
+      width: 1.15rem; min-width: 1.15rem; height: 1.15rem;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .pub-btn.brand-demo .icon { color: #38bdf8; }
+    .pub-btn.brand-theory .icon { color: #a78bfa; }
+    .pub-btn.brand-results .icon { color: #34d399; }
+    .pub-btn.brand-case .icon { color: #fbbf24; }
+    .pub-btn.brand-roadmap .icon { color: #fb7185; }
+
+    /* ====== KEY METRIC PILLS ====== */
+    .metrics-strip {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 1rem; margin-top: 2.2rem;
+    }
+    @media (max-width: 768px) { .metrics-strip { grid-template-columns: repeat(2, 1fr); } }
+    .metric-card {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 18px;
+      padding: 1.1rem 1.15rem; text-align: center;
+      box-shadow: 0 4px 14px rgba(15,23,42,0.04);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .metric-card:hover { transform: translateY(-4px); box-shadow: 0 14px 30px rgba(67,56,202,0.12); border-color: rgba(67,56,202,0.35); }
+    .metric-num {
+      font-size: 2rem; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(120deg, #4338ca, #0ea5e9);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-variant-numeric: tabular-nums;
+      display: inline-block;
+    }
+    .metric-label { color: var(--rm-sub); font-size: 0.84rem; font-weight: 500; margin-top: 0.2rem; line-height: 1.35; }
+    .metric-sub { color: #64748b; font-size: 0.74rem; font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem; }
+
+    /* ====== SECTION TITLES ====== */
+    .rm-section-title {
+      font-weight: 800 !important; letter-spacing: -0.015em;
+      color: var(--rm-ink); position: relative; display: inline-block;
+    }
+    .rm-section-title::after {
+      content: ""; display: block; height: 4px; width: 56px; margin: 0.55rem auto 0;
+      border-radius: 4px; background: linear-gradient(90deg, var(--rm-primary), var(--rm-accent));
+    }
+    .rm-eyebrow {
+      color: var(--rm-primary); font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.18em;
+      font-size: 0.78rem; margin-bottom: 0.35rem; display: block;
+    }
+    .rm-section-sub { color: var(--rm-sub); max-width: 880px; margin: 0.75rem auto 0; line-height: 1.6; }
+
+    /* ====== TABLE OF CONTENTS ====== */
+    .toc-section {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 40;
+      width: 184px;
+      padding: 0;
+      pointer-events: none;
+    }
+    .toc-rail {
+      position: relative;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 1px solid rgba(226,232,240,0.92);
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248,250,252,0.90)),
+        rgba(255,255,255,0.90);
+      box-shadow: 0 18px 42px rgba(15,23,42,0.10);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      pointer-events: auto;
+      max-height: calc(100vh - 2rem);
+    }
+    .toc-rail::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: linear-gradient(180deg, var(--rm-primary), var(--rm-accent), var(--rm-accent-warm));
+    }
+    .toc-inner { display: flex; flex-direction: column; padding: 0.75rem; }
+    .toc-head {
+      display: flex; align-items: center; gap: 0.55rem;
+      width: 100%; padding: 0; border: 0; background: transparent;
+      color: var(--rm-ink); font-family: inherit; cursor: pointer;
+    }
+    .toc-badge {
+      width: 34px; height: 34px; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #0f172a; color: #fff;
+      box-shadow: 0 10px 22px rgba(15,23,42,0.16);
+    }
+    .toc-title { font-size: 0.9rem; font-weight: 800; flex: 1; text-align: left; }
+    .toc-expand {
+      width: 26px; height: 26px; border-radius: 9px;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--rm-primary); background: rgba(99,102,241,0.10);
+      font-size: 0.74rem; transition: transform 0.22s ease;
+    }
+    .toc-rail:not(.is-collapsed) .toc-expand {
+      transform: rotate(180deg); background: var(--rm-primary); color: #fff;
+    }
+    .toc-links {
+      display: flex; flex-direction: column; gap: 0.35rem;
+      overflow-y: auto; max-height: calc(100vh - 6.3rem);
+      padding: 0.65rem 0.05rem 0.1rem; margin-top: 0.6rem;
+      border-top: 1px solid rgba(148,163,184,0.24);
+      transition: max-height 0.24s ease, opacity 0.18s ease;
+    }
+    .toc-rail.is-collapsed .toc-links {
+      max-height: 0; overflow: hidden; opacity: 0; pointer-events: none;
+      margin-top: 0; padding-top: 0; padding-bottom: 0; border-top-color: transparent;
+    }
+    .toc-link {
+      display: inline-flex; align-items: center; gap: 0.42rem;
+      min-height: 33px; padding: 0.44rem 0.6rem;
+      border-radius: 11px; border: 1px solid rgba(226,232,240,0.92);
+      background: rgba(255,255,255,0.82); color: #334155;
+      font-size: 0.78rem; font-weight: 700; text-decoration: none;
+      transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+    }
+    .toc-link i { color: var(--rm-primary); width: 1rem; text-align: center; font-size: 0.76rem; }
+    .toc-link:hover { transform: translateX(2px); border-color: rgba(99,102,241,0.35); color: var(--rm-primary); }
+    .toc-link.is-active {
+      background: linear-gradient(120deg, var(--rm-primary), var(--rm-accent));
+      color: #fff; border-color: transparent;
+      box-shadow: 0 8px 18px rgba(67,56,202,0.22);
+    }
+    .toc-link.is-active i { color: #fff; }
+    @media (max-width: 1180px) { .toc-section { display: none; } }
+
+    /* ====== PLAYGROUND BANNER ====== */
+    .playground-note {
+      position: relative; overflow: hidden; border-radius: 22px;
+      border: 1px solid rgba(67,56,202,0.22);
+      background: linear-gradient(135deg, rgba(67,56,202,0.09), rgba(14,165,233,0.11)), #fff;
+      box-shadow: 0 18px 42px rgba(15,23,42,0.06);
+      padding: 1.15rem 1.35rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+    .playground-note::before {
+      content: ""; position: absolute; inset: 0 auto 0 0; width: 6px;
+      background: linear-gradient(180deg, var(--rm-primary), var(--rm-accent));
+    }
+    .playground-note-main { display: flex; align-items: center; gap: 1rem; }
+    .playground-note-icon {
+      width: 46px; height: 46px; border-radius: 14px;
+      background: #0f172a; color: #38bdf8;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; font-size: 1.15rem;
+    }
+    .playground-note-label {
+      display: block; color: var(--rm-primary); font-size: 0.72rem;
+      font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    }
+    .playground-note h3 { margin: 0; color: var(--rm-ink); font-size: 1.15rem; font-weight: 800; }
+    .playground-note p { margin: 0.2rem 0 0; color: var(--rm-sub); font-size: 0.9rem; }
+
+    /* ====== INTERACTIVE STAGE (RECURSIVEMAS ANIMATION STYLE) ====== */
+    .stage-card {
+      background: #ffffff;
+      border: 1px solid var(--rm-line);
+      border-radius: 24px;
+      box-shadow: 0 16px 44px rgba(15, 23, 42, 0.08);
+      padding: 1.6rem 1.8rem 1.8rem;
+      margin-top: 1.1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .stage-toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.85rem;
+      align-items: center; justify-content: space-between;
+      padding-bottom: 1.1rem; border-bottom: 1px solid var(--rm-line);
+    }
+    .stage-controls-left, .stage-controls-right {
+      display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center;
+    }
+    .stage-select-group {
+      display: flex; flex-direction: column; gap: 0.2rem;
+    }
+    .stage-select-group label {
+      font-size: 0.7rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--rm-sub);
+    }
+    .stage-select {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem; font-weight: 600;
+      padding: 0.45rem 0.75rem; border-radius: 10px;
+      border: 1.5px solid #cbd5e1; background: #f8fafc; color: var(--rm-ink);
+      cursor: pointer;
+    }
+    .stage-select:focus { outline: none; border-color: var(--rm-primary); background: #fff; }
+
+    .round-badge-live {
+      background: linear-gradient(135deg, #4338ca, #7c3aed);
+      color: #fff; padding: 0.55rem 1.1rem; border-radius: 12px;
+      font-size: 0.95rem; font-weight: 800; letter-spacing: 0.02em;
+      box-shadow: 0 4px 14px rgba(67, 56, 202, 0.28);
+      display: inline-flex; align-items: center; gap: 0.5rem;
+    }
+    .stage-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.5rem 0.9rem; border-radius: 10px;
+      border: 1.5px solid #cbd5e1; background: #fff; color: var(--rm-ink);
+      font-weight: 700; font-size: 0.82rem; cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .stage-btn:hover { border-color: var(--rm-primary); color: var(--rm-primary); transform: translateY(-1px); }
+    .stage-btn.is-primary {
+      background: #0f172a; color: #fff; border-color: #0f172a;
+    }
+    .stage-btn.is-primary:hover { background: var(--rm-primary); border-color: var(--rm-primary); color: #fff; }
+    .step-pill-bar {
+      display: inline-flex; background: #f1f5f9; padding: 0.22rem; border-radius: 11px; gap: 0.2rem;
+    }
+    .step-pill {
+      border: 0; background: transparent; padding: 0.35rem 0.68rem;
+      border-radius: 8px; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76rem; font-weight: 700; color: var(--rm-sub); cursor: pointer;
+    }
+    .step-pill.is-active {
+      background: #fff; color: var(--rm-primary);
+      box-shadow: 0 2px 8px rgba(15,23,42,0.10);
+    }
+
+    .question-box-live {
+      margin: 1rem 0;
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .question-box-live .qb-title {
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      color: #fff; padding: 0.55rem 1rem;
+      font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .question-box-live .qb-body {
+      padding: 0.85rem 1.1rem; font-size: 0.92rem; line-height: 1.55; color: #1e293b;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stage-grid {
+      display: grid; grid-template-columns: 1.45fr 1fr; gap: 1.25rem; align-items: stretch;
+    }
+    @media (max-width: 1024px) { .stage-grid { grid-template-columns: 1fr; } }
+
+    .svg-canvas-box {
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      border: 1px solid var(--rm-line); border-radius: 16px;
+      padding: 0.75rem; position: relative;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .pca-and-metrics-col {
+      display: flex; flex-direction: column; gap: 0.9rem;
+    }
+    .mini-panel {
+      background: #f8fafc; border: 1px solid var(--rm-line); border-radius: 16px;
+      padding: 0.9rem 1rem;
+    }
+    .mini-panel-title {
+      font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--rm-primary); margin-bottom: 0.5rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .telemetry-kv-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.55rem;
+    }
+    .t-kv {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 10px;
+      padding: 0.5rem 0.65rem;
+    }
+    .t-kv .k { font-size: 0.7rem; color: var(--rm-sub); font-weight: 600; }
+    .t-kv .v {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.92rem;
+      font-weight: 800; color: var(--rm-ink); margin-top: 0.1rem;
+    }
+
+    .output-terminal {
+      margin-top: 1.1rem;
+      background: #0f172a; color: #e2e8f0;
+      border-radius: 14px; padding: 1rem 1.2rem;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.83rem;
+      line-height: 1.65; box-shadow: 0 10px 26px rgba(15,23,42,0.16);
+    }
+    .output-terminal-head {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.55rem; margin-bottom: 0.65rem;
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: #38bdf8; font-weight: 700;
+    }
+    .method-badges-bar {
+      display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.65rem;
+    }
+    .m-chip {
+      padding: 0.28rem 0.65rem; border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; font-weight: 700;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .m-chip.pass { background: rgba(16,185,129,0.18); color: #6ee7b7; border-color: rgba(16,185,129,0.4); }
+    .m-chip.fail { background: rgba(244,63,94,0.18); color: #fda4af; border-color: rgba(244,63,94,0.4); }
+    .m-chip.active-method { outline: 2px solid #38bdf8; outline-offset: 1px; }
+
+    /* ====== ABSTRACT ====== */
+    .abstract-box {
+      background: var(--rm-bg-tint);
+      border: 1px solid #ddd6fe;
+      border-radius: 22px;
+      padding: 2rem 2.2rem;
+      box-shadow: 0 10px 30px rgba(67,56,202,0.06);
+      position: relative;
+    }
+    .abstract-box::before {
+      content: "TL;DR"; position: absolute; top: -12px; left: 22px;
+      background: linear-gradient(120deg, var(--rm-primary), var(--rm-violet));
+      color: #fff; padding: 0.25rem 0.75rem; border-radius: 999px;
+      font-weight: 700; font-size: 0.72rem; letter-spacing: 0.16em;
+    }
+    .abstract-box p { color: #1f2937; line-height: 1.75; margin-bottom: 0.85rem; }
+    .abstract-box p:last-child { margin-bottom: 0; }
+    .highlight-pill {
+      display: inline-block; padding: 0.05rem 0.55rem;
+      background: rgba(245,158,11,0.18); color: #92400e;
+      border-radius: 6px; font-weight: 700;
+    }
+    .highlight-pill.acc { background: rgba(16,185,129,0.18); color: #065f46; }
+    .highlight-pill.speed { background: rgba(14,165,233,0.18); color: #075985; }
+    .highlight-pill.curv { background: rgba(124,58,237,0.16); color: #5b21b6; }
+
+    /* ====== ARCHITECTURE & FIGURES ====== */
+    .figure-card {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 22px;
+      padding: 1.5rem; box-shadow: 0 10px 30px rgba(15,23,42,0.04);
+      margin: 0 auto;
+    }
+    .figure-caption {
+      margin-top: 0.95rem; font-size: 0.92rem; color: var(--rm-sub); text-align: center; line-height: 1.6;
+    }
+    .figure-caption b { color: var(--rm-ink); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .arch-block {
+      margin-top: 2.5rem; padding-top: 2rem;
+      border-top: 1px dashed #e2e8f0;
+    }
+    .arch-block:first-of-type { margin-top: 0.5rem; padding-top: 0; border-top: none; }
+    .arch-step {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.1rem;
+    }
+    .arch-step-num {
+      display: inline-flex; align-items: center;
+      padding: 0.25rem 0.75rem; border-radius: 999px;
+      background: linear-gradient(120deg, var(--rm-primary), var(--rm-violet));
+      color: #fff; font-weight: 700; font-size: 0.76rem;
+      letter-spacing: 0.16em; text-transform: uppercase;
+    }
+    .arch-step-title {
+      font-weight: 800; color: var(--rm-ink);
+      font-size: 1.45rem; letter-spacing: -0.01em; margin: 0;
+    }
+    .arch-row {
+      display: grid; grid-template-columns: 1.05fr 0.95fr;
+      gap: 1.5rem; align-items: start;
+    }
+    @media (max-width: 980px) { .arch-row { grid-template-columns: 1fr; } }
+    .arch-text p { color: #1f2937; line-height: 1.7; margin-bottom: 0.7rem; }
+    .arch-text code {
+      background: #eef2ff; color: var(--rm-primary);
+      padding: 0.08rem 0.4rem; border-radius: 5px; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.86em;
+    }
+
+    .link-card {
+      background: #fff; border: 1px solid var(--rm-line);
+      border-radius: 14px; padding: 0.95rem 1.1rem;
+      margin-top: 0.85rem; box-shadow: 0 4px 14px rgba(15,23,42,0.04);
+    }
+    .link-card-head {
+      display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.45rem;
+    }
+    .link-badge {
+      padding: 0.2rem 0.65rem; border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.76rem;
+      font-weight: 700; color: #fff;
+    }
+    .link-badge.in  { background: linear-gradient(135deg, #4338ca, #6366f1); }
+    .link-badge.out { background: linear-gradient(135deg, #0ea5e9, #6366f1); }
+    .link-badge.curv { background: linear-gradient(135deg, #7c3aed, #ec4899); }
+    .link-card-sub { color: var(--rm-sub); font-size: 0.84rem; font-weight: 600; }
+
+    .eq-block {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 14px;
+      padding: 0.85rem 1.1rem; box-shadow: 0 4px 14px rgba(15,23,42,0.03);
+      overflow-x: auto; margin: 0.6rem 0;
+    }
+    .insight-box {
+      border-left: 4px solid var(--rm-violet);
+      background: #fafaff;
+      padding: 0.95rem 1.15rem;
+      border-radius: 12px;
+      color: #1f2937;
+      font-size: 0.93rem;
+      line-height: 1.6;
+    }
+    .insight-box b { color: var(--rm-violet); }
+
+    /* ====== PATTERN / CONTROL CARDS ====== */
+    .pattern-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; margin-top: 1.6rem;
+    }
+    @media (max-width: 1100px) { .pattern-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px)  { .pattern-grid { grid-template-columns: 1fr; } }
+    .pattern-card {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 18px;
+      padding: 1.35rem; transition: transform 0.22s ease, box-shadow 0.22s ease;
+      box-shadow: 0 4px 14px rgba(15,23,42,0.04);
+      display: flex; flex-direction: column;
+    }
+    .pattern-card:hover { transform: translateY(-4px); box-shadow: 0 18px 40px rgba(67,56,202,0.12); }
+    .pattern-icon {
+      width: 42px; height: 42px; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 1.05rem; font-weight: 700; margin-bottom: 0.75rem;
+    }
+    .ic-seq { background: linear-gradient(135deg, #4338ca, #6366f1); }
+    .ic-mix { background: linear-gradient(135deg, #059669, #10b981); }
+    .ic-dis { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+    .ic-del { background: linear-gradient(135deg, #0ea5e9, #6366f1); }
+    .pattern-card h4 { font-weight: 800; font-size: 1.02rem; margin-bottom: 0.35rem; color: var(--rm-ink); }
+    .pattern-card p { color: var(--rm-sub); font-size: 0.89rem; line-height: 1.55; margin-bottom: 0.7rem; }
+    .pattern-roles { margin-top: auto; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .role-chip {
+      padding: 0.18rem 0.55rem; border-radius: 6px;
+      background: #eef2ff; color: var(--rm-primary);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; font-weight: 700;
+    }
+
+    /* ====== TABLES ====== */
+    .rm-table-wrap {
+      overflow-x: auto; border-radius: 18px; border: 1px solid var(--rm-line);
+      background: #fff; box-shadow: 0 10px 24px rgba(15,23,42,0.04);
+    }
+    table.rm-table {
+      width: 100%; border-collapse: collapse; font-size: 0.89rem;
+    }
+    table.rm-table thead {
+      background: linear-gradient(180deg, #eef2ff 0%, #ede9fe 100%);
+    }
+    table.rm-table th {
+      padding: 0.8rem 0.85rem; text-align: center;
+      font-weight: 700; color: #312e81;
+      border-bottom: 2px solid #ddd6fe;
+    }
+    table.rm-table th:first-child, table.rm-table td:first-child { text-align: left; }
+    table.rm-table td {
+      padding: 0.68rem 0.85rem; text-align: center; color: #1f2937;
+      border-bottom: 1px solid var(--rm-line);
+      font-variant-numeric: tabular-nums;
+    }
+    table.rm-table tr:last-child td { border-bottom: none; }
+    table.rm-table tbody tr:hover { background: #f8fafc; }
+    table.rm-table .row-ours {
+      background: linear-gradient(90deg, rgba(99,102,241,0.11), rgba(14,165,233,0.07));
+      font-weight: 700;
+    }
+    table.rm-table .row-ours td { color: #312e81; }
+    table.rm-table .group-head td {
+      background: #f1f5f9; color: var(--rm-sub); font-weight: 700;
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.14em;
+      text-align: center; padding: 0.42rem;
+    }
+    .delta-up { color: #059669; font-weight: 700; }
+    .delta-down { color: #b91c1c; font-weight: 700; }
+    .pat-tag {
+      display: inline-block; padding: 0.22rem 0.6rem; border-radius: 7px;
+      font-weight: 700; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;
+    }
+    .pat-seq { background: rgba(99,102,241,0.12); color: #4338ca; }
+    .pat-mix { background: rgba(16,185,129,0.13); color: #047857; }
+    .pat-dis { background: rgba(245,158,11,0.16); color: #b45309; }
+    .pat-del { background: rgba(14,165,233,0.13); color: #0369a1; }
+
+    /* ====== GAIN CARDS ====== */
+    .gain-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; margin-top: 1.4rem;
+    }
+    @media (max-width: 900px) { .gain-grid { grid-template-columns: 1fr; } }
+    .gain-card {
+      background: #fff; border: 1px solid var(--rm-line); border-radius: 18px;
+      padding: 1.35rem; position: relative; overflow: hidden;
+    }
+    .gain-card::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 4px;
+      background: linear-gradient(90deg, var(--rm-primary), var(--rm-accent));
+    }
+    .gain-card .num {
+      font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(120deg, var(--rm-primary), var(--rm-accent));
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .gain-card h5 { font-weight: 800; margin-top: 0.2rem; color: var(--rm-ink); }
+    .gain-card p { color: var(--rm-sub); font-size: 0.9rem; line-height: 1.55; margin-top: 0.25rem; }
+
+    /* ====== CASE STUDY (DARK SECTION) ====== */
+    .rm-bg-soft { background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); }
+    .rm-bg-tint { background: linear-gradient(180deg, #f5f3ff 0%, #eef2ff 100%); }
+    .rm-bg-dark { background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%); color: #e0e7ff; }
+    .rm-bg-dark .rm-section-title { color: #fff; }
+    .rm-bg-dark .rm-section-sub { color: #c7d2fe; }
+    .rm-bg-dark .rm-eyebrow { color: #a5b4fc; }
+
+    .case-studies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
+    @media (max-width: 1100px) { .case-studies { grid-template-columns: 1fr; } }
+    .case-card {
+      border-radius: 20px; padding: 1.35rem;
+      border: 1px solid var(--rm-line); background: #fff;
+      box-shadow: 0 8px 22px rgba(15,23,42,0.12);
+      display: flex; flex-direction: column; gap: 0.65rem;
+      position: relative; overflow: hidden; color: var(--rm-ink);
+    }
+    .case-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; }
+    .case-card.r1::before { background: linear-gradient(90deg, #6366f1, #10b981); }
+    .case-card.r2::before { background: linear-gradient(90deg, #7c3aed, #0ea5e9); }
+    .case-card.r3::before { background: linear-gradient(90deg, #f43f5e, #f59e0b); }
+    .case-tag {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.25rem 0.65rem; border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.76rem;
+      width: fit-content;
+    }
+    .case-card.r1 .case-tag { background: rgba(16,185,129,0.14); color: #065f46; }
+    .case-card.r2 .case-tag { background: rgba(99,102,241,0.14); color: #3730a3; }
+    .case-card.r3 .case-tag { background: rgba(244,63,94,0.12); color: #9f1239; }
+    .case-body {
+      font-size: 0.84rem; line-height: 1.6; color: #1f2937;
+      background: #f8fafc; border-radius: 12px; padding: 0.85rem 0.95rem;
+      border: 1px dashed #cbd5e1; font-family: 'JetBrains Mono', monospace;
+    }
+    .case-answer {
+      font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.82rem;
+      padding: 0.42rem 0.7rem; border-radius: 10px; width: fit-content; margin-top: auto;
+    }
+    .case-card.r1 .case-answer, .case-card.r2 .case-answer {
+      background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;
+    }
+    .case-card.r3 .case-answer {
+      background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    }
+
+    /* ====== HEATMAP GRID ====== */
+    .heatmap-grid {
+      display: grid; grid-template-columns: 90px repeat(4, 1fr); gap: 0.45rem;
+      margin-top: 1rem; font-family: 'JetBrains Mono', monospace;
+    }
+    .hm-cell {
+      border-radius: 10px; padding: 0.65rem 0.5rem; text-align: center;
+      font-size: 0.82rem; font-weight: 700; border: 1px solid rgba(15,23,42,0.08);
+      transition: transform 0.15s ease;
+    }
+    .hm-cell:hover { transform: scale(1.03); z-index: 2; }
+    .hm-head {
+      background: #f1f5f9; color: #334155; font-weight: 800; font-size: 0.78rem;
+      display: flex; align-items: center; justify-content: center; border-radius: 10px; padding: 0.5rem;
+    }
+
+    /* ====== BIBTEX ====== */
+    .bibtex-box {
+      background: #0f172a; color: #e2e8f0; border-radius: 18px;
+      padding: 1.5rem 1.6rem; font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem; overflow-x: auto; position: relative;
+      box-shadow: 0 18px 40px rgba(15,23,42,0.18);
+    }
+    .bibtex-box pre {
+      background: transparent !important; color: inherit !important;
+      margin: 0 !important; padding: 0 !important; white-space: pre; line-height: 1.75;
+    }
+    .bibtex-copy {
+      position: absolute; top: 1rem; right: 1rem;
+      background: rgba(255,255,255,0.1); color: #e2e8f0;
+      padding: 0.45rem 0.8rem; border-radius: 10px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.16); font-size: 0.78rem; font-weight: 600;
+    }
+    .bibtex-copy:hover { background: rgba(255,255,255,0.2); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     HERO BANNER
+============================================================ -->
+<section class="hero-banner" id="top">
+  <div class="container is-max-desktop has-text-centered">
+    <span class="pub-eyebrow">
+      <i class="fas fa-route"></i>
+      Inference-Time Latent Trajectory Intervention &middot; Looped Language Models
+    </span>
+    <h1 class="title pub-title">TEBDİL: Cooperative Latent Excursions<br>for Recurrent Reasoning</h1>
+    <p class="pub-subtitle">
+      Evaluating Shared Recurrent Transition Operators Along Cross-Trajectory Midpoints Without Retraining
+    </p>
+
+    <div class="pub-venue">
+      <span class="pub-venue-line" aria-hidden="true"></span>
+      <span class="pub-venue-text">
+        <span class="pub-venue-ico" aria-hidden="true"><i class="fas fa-microchip"></i></span>
+        <span>Backbone: ByteDance/Ouro-1.4B-Thinking (24L &times; 4 Recurrent UT Steps)</span>
+      </span>
+      <span class="pub-venue-line" aria-hidden="true"></span>
+    </div>
+
+    <div class="pub-affil">
+      <span>Rev: <code>3aaa2224253a92ca45cf2e3d427c360e1ef9c93d</code> &nbsp;&middot;&nbsp; 634 Real Model Trace Executions &nbsp;&middot;&nbsp; 28/28 Invariant Tests Passing</span>
+    </div>
+
+    <div class="pub-links">
+      <a href="#demo" class="pub-btn brand-demo">
+        <span class="icon"><i class="fas fa-play-circle"></i></span><span>Interactive Simulator</span>
+      </a>
+      <a href="#architecture" class="pub-btn">
+        <span class="icon"><i class="fas fa-project-diagram"></i></span><span>Mechanism &amp; Math</span>
+      </a>
+      <a href="#theory" class="pub-btn brand-theory">
+        <span class="icon"><i class="fas fa-bolt"></i></span><span>Curvature Theory ($C_t$)</span>
+      </a>
+      <a href="#results" class="pub-btn brand-results">
+        <span class="icon"><i class="fas fa-chart-line"></i></span><span>Phase 1&ndash;4 Results</span>
+      </a>
+      <a href="#case-study" class="pub-btn brand-case">
+        <span class="icon"><i class="fas fa-microscope"></i></span><span>Case Replays</span>
+      </a>
+      <a href="#roadmap" class="pub-btn brand-roadmap">
+        <span class="icon"><i class="fas fa-flag-checkered"></i></span><span>Roadmap to Paper</span>
+      </a>
+      <a href="#bibtex" class="pub-btn">
+        <span class="icon"><i class="fas fa-quote-right"></i></span><span>Cite</span>
+      </a>
+    </div>
+
+    <!-- Headline metrics driven by real Phase 4 & Phase 3 results -->
+    <div class="metrics-strip">
+      <div class="metric-card">
+        <div class="metric-num" data-target="+5.56%">+5.56%</div>
+        <div class="metric-label">Held-Out Test Accuracy Gain</div>
+        <div class="metric-sub">E1 &amp; E2 (27.78%) vs S0 &amp; P0 (22.22%)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-target="2 / 0">2 / 0</div>
+        <div class="metric-label">Rescued vs. Degraded (Test E2)</div>
+        <div class="metric-sub">7.14% Rescue Rate &middot; 0.0% Degradation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-target="42.06">42.06</div>
+        <div class="metric-label">Mean Nonlinear Curvature $\|C_2\|_F$</div>
+        <div class="metric-sub">37.1% of Midpoint Update Norm</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-target="14.03">14.03</div>
+        <div class="metric-label">Mean Recurrent Block Calls (E2)</div>
+        <div class="metric-sub">Saves 4.4% compute vs Fixed E1 (14.67)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FLOATING TABLE OF CONTENTS
+============================================================ -->
+<section class="section toc-section" aria-label="Section navigation">
+  <nav class="toc-rail" id="tocRail" aria-label="Contents">
+    <div class="toc-inner">
+      <button class="toc-head" id="tocToggle" type="button" aria-expanded="true" aria-controls="tocLinks">
+        <span class="toc-badge" aria-hidden="true"><i class="fas fa-list-ul"></i></span>
+        <span class="toc-title">Contents</span>
+        <span class="toc-expand" aria-hidden="true"><i class="fas fa-chevron-down"></i></span>
+      </button>
+      <div class="toc-links" id="tocLinks">
+        <a class="toc-link is-active" href="#demo"><i class="fas fa-play-circle"></i><span>Live Stage</span></a>
+        <a class="toc-link" href="#abstract"><i class="fas fa-align-left"></i><span>Abstract</span></a>
+        <a class="toc-link" href="#architecture"><i class="fas fa-project-diagram"></i><span>Architecture</span></a>
+        <a class="toc-link" href="#theory"><i class="fas fa-bolt"></i><span>Theory ($C_t$)</span></a>
+        <a class="toc-link" href="#patterns"><i class="fas fa-layer-group"></i><span>12 Controls</span></a>
+        <a class="toc-link" href="#results"><i class="fas fa-chart-line"></i><span>Main Results</span></a>
+        <a class="toc-link" href="#scaling"><i class="fas fa-th"></i><span>Grid &amp; Scope</span></a>
+        <a class="toc-link" href="#case-study"><i class="fas fa-sync-alt"></i><span>Case Studies</span></a>
+        <a class="toc-link" href="#examples"><i class="fas fa-table"></i><span>Trace Explorer</span></a>
+        <a class="toc-link" href="#roadmap"><i class="fas fa-flag-checkered"></i><span>Paper Roadmap</span></a>
+        <a class="toc-link" href="#bibtex"><i class="fas fa-quote-right"></i><span>Cite</span></a>
+      </div>
+    </div>
+  </nav>
+</section>
+
+<main id="main-content">
+
+<!-- ============================================================
+     INTERACTIVE STAGE (RECURSIVEMAS-STYLE LIVE ANIMATION + REAL TRACES)
+============================================================ -->
+<section class="section" id="demo" style="padding-top: 1.5rem; padding-bottom: 1.8rem;">
+  <div class="container is-max-desktop">
+    <div class="playground-note">
+      <div class="playground-note-main">
+        <span class="playground-note-icon" aria-hidden="true"><i class="fas fa-wave-square"></i></span>
+        <div>
+          <span class="playground-note-label">Interactive Recurrent Observatory &middot; Real Ouro-1.4B-Thinking Telemetry</span>
+          <h3>Watch TEBDİL Cooperative Latent Excursions Step-by-Step</h3>
+          <p>Select any real benchmark problem and method below. Inspect how Branch $A$ forks Donor $B$ at $t{=}1$, visits midpoint $H_2^{\mathrm{visit}}$ at $t{=}2$ to extract nonlinear curvature $C_2$, and returns to $H_3^{A'}$.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage-card">
+      <div class="stage-toolbar">
+        <div class="stage-controls-left">
+          <div class="round-badge-live" id="stageStepBadge">
+            <i class="fas fa-sync-alt"></i>
+            <span id="stageStepLabel">UT Step t = 2 &middot; Midpoint Excursion</span>
+          </div>
+          <div class="step-pill-bar" role="tablist" aria-label="Recurrent steps">
+            <button type="button" class="step-pill" data-step="1">t=1 Fork</button>
+            <button type="button" class="step-pill is-active" data-step="2">t=2 Excursion</button>
+            <button type="button" class="step-pill" data-step="3">t=3 Return</button>
+            <button type="button" class="step-pill" data-step="4">t=4 Readout</button>
+          </div>
+          <button type="button" class="stage-btn is-primary" id="playLoopBtn">
+            <i class="fas fa-play" id="playLoopIcon"></i>
+            <span id="playLoopText">Auto-Loop</span>
+          </button>
+        </div>
+
+        <div class="stage-controls-right">
+          <div class="stage-select-group">
+            <label for="caseSelect">Curated &amp; Benchmark Instances</label>
+            <select id="caseSelect" class="stage-select"></select>
+          </div>
+          <div class="stage-select-group">
+            <label for="methodSelect">Active Method</label>
+            <select id="methodSelect" class="stage-select"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prompt & ground truth header -->
+      <div class="question-box-live">
+        <div class="qb-title">
+          <span id="liveProblemHeader">Problem: arith_test_003 (seed=42) &middot; Family: Arithmetic</span>
+          <span id="liveGoldBadge" style="background: rgba(255,255,255,0.16); padding: 0.15rem 0.6rem; border-radius: 6px;">Gold Answer: 48</span>
+        </div>
+        <div class="qb-body" id="livePromptBody">Loading prompt...</div>
+      </div>
+
+      <!-- Main interactive visual stage: Left = Recurrent Loop Diagram, Right = 2D PCA + Telemetry -->
+      <div class="stage-grid">
+        <div class="svg-canvas-box">
+          <div class="mini-panel-title">
+            <span><i class="fas fa-project-diagram"></i> Recurrent Computation Graph ($T = 4$ Universal Transformer Steps)</span>
+            <span id="liveFormulaPill" style="font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:#4338ca;">$H_3^{A'} = H_2^A + (1-\beta)V_2^A + \beta \tilde{V}_2^{\mathrm{visit}}$</span>
+          </div>
+          <svg id="excursionStageSvg" viewBox="0 0 680 320" style="width:100%; height:auto; overflow:visible;"></svg>
+          <div id="stageStepNarrative" style="margin-top:0.55rem; padding:0.65rem 0.85rem; background:#eef2ff; border-radius:10px; font-size:0.83rem; color:#1e1b4b; line-height:1.5;"></div>
+        </div>
+
+        <div class="pca-and-metrics-col">
+          <div class="mini-panel">
+            <div class="mini-panel-title">
+              <span><i class="fas fa-compass"></i> Real 2D SVD/PCA Latent Trajectory</span>
+              <span id="pcaVarLabel" style="font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:#64748b;">Explained Var: --</span>
+            </div>
+            <svg id="pcaPlotSvg" viewBox="0 0 380 175" style="width:100%; height:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px;"></svg>
+          </div>
+
+          <div class="mini-panel">
+            <div class="mini-panel-title">
+              <span><i class="fas fa-tachometer-alt"></i> Step-by-Step Latent Telemetry</span>
+              <span id="telemetryStepTag" style="font-family:'JetBrains Mono',monospace; font-size:0.72rem;">Step 2</span>
+            </div>
+            <div class="telemetry-kv-grid" id="telemetryGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Output Terminal comparing all methods on the selected problem -->
+      <div class="output-terminal">
+        <div class="output-terminal-head">
+          <span><i class="fas fa-terminal"></i> Decoded Output &amp; Cross-Method Comparison on Selected Instance</span>
+          <span id="terminalCallCost">Recurrent Block Calls: 14</span>
+        </div>
+        <div id="terminalMainText" style="color:#f8fafc;"></div>
+        <div class="method-badges-bar" id="terminalMethodBadges"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     ABSTRACT
+============================================================ -->
+<section class="section rm-bg-soft" id="abstract">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.6rem;">
+      <span class="rm-eyebrow">Overview</span>
+      <h2 class="title is-3 rm-section-title">Abstract &amp; Core Research Question</h2>
+    </div>
+    <div class="abstract-box">
+      <p>
+        Looped and recurrent language models (such as <b>ByteDance/Ouro-1.4B-Thinking</b>) scale reasoning depth by
+        repeatedly applying a shared transformer block $F_{\theta,t}$ to a continuous latent state $H_t \in \mathbb{R}^{L \times d}$
+        across $T$ recurrent iterations before decoding tokens. However, a single deterministic trajectory ($S_0$) can become
+        trapped in a suboptimal basin during intermediate recurrent steps, while naive parallel sampling ($P_0$) runs isolated trajectories
+        that never share latent transition geometry before readout.
+      </p>
+      <p>
+        We ask: <i>Can a recurrent reasoning trajectory recover from intermediate basin traps by briefly visiting the latent neighborhood
+        of a perturbed companion trajectory, evaluating the shared transition operator $F_{\theta,t}$ along the cross-trajectory midpoint,
+        and importing the resulting local update vector back into its own state?</i>
+      </p>
+      <p>
+        We introduce <b>TEBDİL</b> (<i>Cooperative Latent Excursions for Recurrent Reasoning</i>), a training-free, zero-parameter
+        inference-time intervention. At step $t{=}1$, TEBDİL forks a full-sequence norm-bounded perturbed donor trajectory $H_1^B$.
+        At step $t{=}2$, it constructs the midpoint $H_2^{\mathrm{visit}} = (1-\alpha)H_2^A + \alpha H_2^B$, evaluates the shared
+        recurrent block once at $H_2^{\mathrm{visit}}$ to extract the local transition vector $V_2^{\mathrm{visit}} = F_{\theta,2}(H_2^{\mathrm{visit}}) - H_2^{\mathrm{visit}}$,
+        clips its relative Frobenius norm to a trust region, and updates the primary branch via $H_3^{A'} = H_2^A + (1-\beta)V_2^A + \beta \tilde{V}_2^{\mathrm{visit}}$.
+        Across <b>634 real model trace executions</b>, TEBDİL demonstrates that:
+        (1) full-sequence perturbation ($\eta{=}0.25$) overcomes the $10\times$ single-step contraction of Ouro's 96 Sandwich RMSNorm layers;
+        (2) evaluating $F_{\theta,2}$ at the midpoint generates substantial <b>nonlinear excursion curvature</b>
+        <span class="highlight-pill curv">$\|C_2\|_F = 42.06$</span> that is absent in linear update mixing ($M_1$); and
+        (3) our label-free adaptive policy ($E_2$) improves held-out test accuracy by
+        <span class="highlight-pill acc">+5.56% over $S_0$/$P_0$</span> with
+        <span class="highlight-pill speed">0 degradations</span>, including emergent cooperative rescues where both independent branches fail.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     ARCHITECTURE & MECHANISM
+============================================================ -->
+<section class="section" id="architecture">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Architecture &amp; Formulation</span>
+      <h2 class="title is-3 rm-section-title">TEBDİL at a Glance</h2>
+      <p class="rm-section-sub">
+        Unlike multi-agent systems that pass text or train external adapter modules, TEBDİL operates
+        <b>entirely inside a single frozen looped language model</b> by exploiting the nonlinear vector field
+        of its shared recurrent transition operator $F_{\theta,t}$.
+      </p>
+    </div>
+
+    <!-- Part 1: Ouro Sandwich RMSNorm Contraction -->
+    <div class="arch-block">
+      <div class="arch-step">
+        <span class="arch-step-num">Part 1</span>
+        <h3 class="arch-step-title">Overcoming Sandwich RMSNorm Contraction in Ouro-1.4B</h3>
+      </div>
+      <div class="arch-row">
+        <div class="arch-text">
+          <p>
+            In <code>ByteDance/Ouro-1.4B-Thinking</code>, each Universal Transformer recurrent step $t \in \{0,1,2,3\}$
+            passes the hidden state $H_t \in \mathbb{R}^{L \times 2048}$ through all <b>24 shared decoder layers</b>
+            followed by final RMSNorm. Each decoder layer applies <b>4 Sandwich RMSNorm operations</b>
+            (<code>input_layernorm</code>, <code>post_attention_layernorm</code>, <code>post_feedforward_layernorm</code>,
+            plus residual scaling), totaling <b>96 RMSNorm normalizations per recurrent step</b>.
+          </p>
+          <div class="link-card">
+            <div class="link-card-head">
+              <span class="link-badge in">Last-Token Scope ($\eta \le 0.05$)</span>
+              <span class="link-card-sub">Contracted $10\times$ in 1 UT step</span>
+            </div>
+            <p>
+              Perturbing only the final token position leaves all $L{-}1$ prefix tokens identical. Self-attention
+              immediately averages over the unperturbed prefix, contracting $\|H_2^A - H_2^B\|_F / \|H_2^A\|_F$ to $&lt;0.005$
+              with curvature $\|C_2\|_F = 0.94$ and $0\%$ rescue rate.
+            </p>
+          </div>
+          <div class="link-card">
+            <div class="link-card-head">
+              <span class="link-badge out">Full-Sequence Scope ($\eta = 0.25$, $\tau = 0.35$)</span>
+              <span class="link-card-sub">Sustained Basin Separation</span>
+            </div>
+            <p>
+              Applying norm-matched Gaussian noise across all token positions at $t{=}1$ shifts keys and values across the
+              entire context, expanding relative branch distance from $0.250$ at $t{=}1$ to $0.459$ at $t{=}2$
+              ($\cos(H_2^A, H_2^B) = 0.895$) while remaining $100\%$ finite.
+            </p>
+          </div>
+        </div>
+
+        <div class="figure-card">
+          <svg viewBox="0 0 460 285" style="width:100%; height:auto;">
+            <defs>
+              <linearGradient id="gIndigo" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#4338ca"/>
+                <stop offset="100%" stop-color="#6366f1"/>
+              </linearGradient>
+              <linearGradient id="gSky" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0ea5e9"/>
+                <stop offset="100%" stop-color="#38bdf8"/>
+              </linearGradient>
+            </defs>
+            <rect x="10" y="10" width="440" height="265" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+            <text x="230" y="34" text-anchor="middle" font-size="12" font-weight="800" fill="#1e1b4b">Ouro-1.4B Shared Recurrent Step F_θ,t (96 Sandwich RMSNorms)</text>
+
+            <!-- 24 Decoder block stack -->
+            <rect x="30" y="48" width="400" height="72" rx="10" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="45" y="68" font-size="11" font-weight="700" fill="#334155">24 &times; OuroDecoderLayer (Shared Weights across t = 0, 1, 2, 3)</text>
+            <rect x="45" y="78" width="82" height="28" rx="6" fill="#eef2ff" stroke="#818cf8"/>
+            <text x="86" y="96" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4338ca">In RMSNorm</text>
+            <rect x="137" y="78" width="96" height="28" rx="6" fill="#eef2ff" stroke="#818cf8"/>
+            <text x="185" y="96" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4338ca">Attn + PostNorm</text>
+            <rect x="243" y="78" width="88" height="28" rx="6" fill="#eef2ff" stroke="#818cf8"/>
+            <text x="287" y="96" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4338ca">In FFN Norm</text>
+            <rect x="341" y="78" width="76" height="28" rx="6" fill="#eef2ff" stroke="#818cf8"/>
+            <text x="379" y="96" text-anchor="middle" font-size="9.5" font-weight="700" fill="#4338ca">Post FFN Norm</text>
+
+            <!-- Contraction comparison bars -->
+            <text x="35" y="146" font-size="11" font-weight="700" fill="#0f172a">Empirical Branch Separation &amp; Curvature at t = 2 (Phase 3 Ablation):</text>
+
+            <rect x="35" y="158" width="390" height="46" rx="9" fill="#fff1f2" stroke="#fda4af"/>
+            <text x="48" y="176" font-size="10.5" font-weight="700" fill="#9f1239">last_token scope (L=1 perturbed):</text>
+            <text x="48" y="194" font-size="10" font-family="JetBrains Mono, monospace" fill="#be123c">||C₂||_F = 0.94  |  RelDist = 0.004  |  Acc = 11.11% (Collapsed)</text>
+            <rect x="340" y="168" width="14" height="24" rx="4" fill="#f43f5e"/>
+
+            <rect x="35" y="214" width="390" height="48" rx="9" fill="#ecfdf5" stroke="#6ee7b7"/>
+            <text x="48" y="232" font-size="10.5" font-weight="700" fill="#065f46">full sequence scope (all L tokens perturbed, η=0.25):</text>
+            <text x="48" y="250" font-size="10" font-family="JetBrains Mono, monospace" fill="#047857">||C₂||_F = 41.76 |  RelDist = 0.459  |  Acc = 22.22% (+11.1% lift)</text>
+            <rect x="340" y="224" width="72" height="24" rx="4" fill="url(#gIndigo)"/>
+          </svg>
+          <p class="figure-caption">
+            <b>Sandwich RMSNorm Contraction vs. Token Scope.</b> Full-sequence perturbation at $t{=}1$ generates $44\times$ larger nonlinear excursion curvature $\|C_2\|_F$ at $t{=}2$ than last-token perturbation and doubles accuracy on the Phase 3 ablation subset.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Part 2: Four-Step Cooperative Latent Excursion Operator -->
+    <div class="arch-block">
+      <div class="arch-step">
+        <span class="arch-step-num">Part 2</span>
+        <h3 class="arch-step-title">The Cooperative Latent Excursion Operator ($E_1$)</h3>
+      </div>
+      <div class="grid-2">
+        <div class="link-card" style="margin-top:0;">
+          <div class="link-card-head">
+            <span class="link-badge in">Step A &middot; Midpoint Probe</span>
+            <span class="link-card-sub">Cross-Trajectory Interpolation at $t=2$</span>
+          </div>
+          <p style="font-size:0.92rem; color:#334155;">
+            Given primary state $H_t^A$ and perturbed donor state $H_t^B$, TEBDİL constructs a temporary visit state
+            at fractional depth $\alpha \in [0, 1]$ and evaluates the shared recurrent operator $F_{\theta,t}$:
+          </p>
+          <div class="eq-block">
+            $$H_t^{\mathrm{visit}} = (1 - \alpha) H_t^A + \alpha H_t^B$$
+            $$V_t^{\mathrm{visit}} = F_{\theta,t}\!\left(H_t^{\mathrm{visit}},\; x,\; \mathcal{C}_t\right) - H_t^{\mathrm{visit}}$$
+          </div>
+        </div>
+
+        <div class="link-card" style="margin-top:0;">
+          <div class="link-card-head">
+            <span class="link-badge out">Step B &middot; Trust-Region Return</span>
+            <span class="link-card-sub">Norm-Clipped Directional Import</span>
+          </div>
+          <p style="font-size:0.92rem; color:#334155;">
+            To prevent representation explosion, $V_t^{\mathrm{visit}}$ is clipped relative to $\|V_t^A\|_F$ ($\gamma_{\max}=1.5$)
+            and blended into Branch $A$'s update with return weight $\beta \in [0, 1]$:
+          </p>
+          <div class="eq-block">
+            $$\tilde{V}_t^{\mathrm{visit}} = V_t^{\mathrm{visit}} \cdot \min\!\left(1,\; \frac{\gamma_{\max}\|V_t^A\|_F}{\|V_t^{\mathrm{visit}}\|_F + \varepsilon}\right)$$
+            $$H_{t+1}^{A'} = H_t^A + (1 - \beta) V_t^A + \beta \tilde{V}_t^{\mathrm{visit}}$$
+          </div>
+        </div>
+      </div>
+
+      <div class="insight-box" style="margin-top: 1rem;">
+        <b>Why Return to $H_t^A$ Instead of Staying at $H_t^{\mathrm{visit}}$ ($C_0$)?</b>
+        In our Phase 3 ablation, staying at the midpoint without returning ($C_0$: $H_{t+1}^{C_0} = H_t^{\mathrm{visit}} + V_t^{\mathrm{visit}}$)
+        shifts the base coordinate origin away from $H_t^A$, losing the rescue on <code>graph_validation_002</code> ($38.89\%$ vs $E_1$'s $44.44\%$).
+        Anchoring the return at $H_t^A$ preserves primary trajectory semantics while importing only the midpoint's directional velocity.
+      </div>
+    </div>
+
+    <!-- Part 3: Label-Free Adaptive Trigger Policy (E2) -->
+    <div class="arch-block">
+      <div class="arch-step">
+        <span class="arch-step-num">Part 3</span>
+        <h3 class="arch-step-title">Label-Free Adaptive Excursion Policy ($E_2$)</h3>
+      </div>
+      <div class="arch-row">
+        <div class="arch-text">
+          <p>
+            Unconditional excursion ($E_1$) applies $\beta{=}0.5$ on every problem instance—even when Branch $A$ is already highly confident,
+            risking unnecessary compute or over-excursion. Our adaptive policy $E_2$ projects intermediate state $H_2^A$ through the native
+            readout head $g_\phi(H_2^A)$ at step $t{=}2$ and computes two <b>strictly label-free</b> uncertainty signals:
+          </p>
+          <div class="eq-block">
+            $$m_t^A = z_{(1)}^A - z_{(2)}^A \quad (\text{Top-2 Logit Margin}), \qquad \mathcal{H}_t^A = -\sum_{v \in V} p_t^A(v)\log p_t^A(v)$$
+          </div>
+          <p>
+            $E_2$ triggers the midpoint excursion if and only if:
+            (1) primary uncertainty is elevated ($m_2^A \le 0.70$ or $\mathcal{H}_2^A \ge 1.20$), and
+            (2) relative branch divergence lies inside the trust window $\frac{\|H_2^A - H_2^B\|_F}{\|H_2^A\|_F} \in [0.005,\; 0.65]$.
+            Otherwise, $E_2$ skips $F_{\theta,2}(H_2^{\mathrm{visit}})$, saving recurrent block calls and preventing degradation.
+          </p>
+        </div>
+        <div class="figure-card">
+          <h4 style="font-weight:800; font-size:1rem; color:var(--rm-ink); margin-bottom:0.65rem;">
+            <i class="fas fa-shield-halved" style="color:var(--rm-emerald); margin-right:0.4rem;"></i>
+            Zero-Leakage Verification &amp; Test-Time Efficiency
+          </h4>
+          <p style="font-size:0.88rem; color:var(--rm-sub); line-height:1.6;">
+            Enforced by automated unit test <code>tests/test_no_label_leakage.py</code>:
+            <code>AdaptiveExcursionPolicy.decide()</code> accepts only $(H_t^A, H_t^B, \text{logits}_A, \text{logits}_B)$ and is invariant to
+            arbitrary mutations of <code>gold_answer</code>.
+          </p>
+          <div class="eq-block" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; background:#f8fafc;">
+            <div><b>Held-Out Test (n=36):</b></div>
+            <div>&bull; Fixed E1: 27.78% acc | 2 rescued, 0 degraded | 14.67 calls</div>
+            <div style="color:#059669; font-weight:700;">&bull; Adaptive E2: 27.78% acc | 2 rescued, 0 degraded | 14.03 calls</div>
+            <div>&bull; Single S0: 22.22% acc | 0 rescued, 0 degraded | 7.33 calls</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     THEORETICAL INSIGHTS
+============================================================ -->
+<section class="section rm-bg-tint" id="theory">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Why Midpoint Excursion Beats Linear Mixing</span>
+      <h2 class="title is-3 rm-section-title">Theoretical &amp; Mechanistic Insights</h2>
+      <p class="rm-section-sub">
+        What mathematically distinguishes TEBDİL ($E_1$) from simply averaging the hidden states ($M_0$) or
+        averaging the individual update vectors ($M_1$) of two trajectories?
+      </p>
+    </div>
+
+    <div class="grid-2">
+      <div class="figure-card">
+        <h4 style="font-weight: 800; color: var(--rm-ink); margin-bottom: 0.5rem;">
+          <i class="fas fa-bezier-curve" style="color: var(--rm-violet); margin-right: 0.4rem;"></i>
+          Proposition 1 &mdash; Exact Curvature Decomposition
+        </h4>
+        <p style="color: var(--rm-sub); font-size: 0.92rem; line-height: 1.6;">
+          Define the <b>nonlinear excursion curvature residual</b> $C_t$ at step $t$ as the deviation of the midpoint transition vector from the convex combination of endpoint transition vectors:
+        </p>
+        <div class="eq-block">
+          $$C_t \;\triangleq\; V_t^{\mathrm{visit}} - \Big[(1-\alpha)V_t^A + \alpha V_t^B\Big]$$
+          $$H_{t+1}^{A'}(E_1) \;=\; \underbrace{H_t^A + (1-\alpha\beta)V_t^A + \alpha\beta V_t^B}_{\text{Linear Update Mixing } M_1(\gamma=\alpha\beta)} \;+\; \beta C_t$$
+        </div>
+        <div class="insight-box" style="margin-top: 0.8rem;">
+          <b>Causal Implication:</b> If $F_{\theta,t}$ were locally affine between $H_t^A$ and $H_t^B$, then $C_t \equiv 0$ and $E_1$ would be algebraically identical to $M_1$. Empirically, $\|C_2\|_F = 42.06$ ($37.1\%$ of $\|V_2^{\mathrm{visit}}\|_F$), and ablating $C_2 \to 0$ eliminates $E_1$'s rescue on <code>graph_validation_002</code>.
+        </div>
+      </div>
+
+      <div class="figure-card">
+        <h4 style="font-weight: 800; color: var(--rm-ink); margin-bottom: 0.5rem;">
+          <i class="fas fa-compass-drafting" style="color: var(--rm-accent); margin-right: 0.4rem;"></i>
+          Proposition 2 &mdash; Directional Specificity of $C_t$
+        </h4>
+        <p style="color: var(--rm-sub); font-size: 0.92rem; line-height: 1.6;">
+          Is the benefit of $C_t$ merely an artifact of injecting extra vector norm at step $t{=}2$? We test two norm-matched directional controls in Phase 3:
+        </p>
+        <div class="eq-block">
+          $$E_1^{\text{rand-curv}}:\quad V_t^{\text{synth}} = \big[(1-\alpha)V_t^A + \alpha V_t^B\big] + \frac{\|C_t\|_F}{\|u\|_F}\,u$$
+          $$E_0:\quad H_t^{\text{visit,rand}} = H_t^A + \alpha \|H_t^B - H_t^A\|_F \frac{w}{\|w\|_F}$$
+        </div>
+        <div class="insight-box" style="margin-top: 0.8rem;">
+          <b>Empirical Proof:</b> Replacing $C_2$ with a norm-matched random vector ($E_1^{\text{rand-curv}}$) drops validation accuracy from $44.44\%$ to $38.89\%$ ($0/11$ rescues). Probing a random direction of equal distance ($E_0$) inflates curvature $4\times$ to $168.41$ and degrades gold log-prob by $-0.1254$.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     12-METHOD CONTROL HIERARCHY
+============================================================ -->
+<section class="section" id="patterns">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1rem;">
+      <span class="rm-eyebrow">Rigorous Falsification Design</span>
+      <h2 class="title is-3 rm-section-title">12-Method Control &amp; Ablation Hierarchy</h2>
+      <p class="rm-section-sub">
+        Every claim in TEBDİL is tested against a pre-registered hierarchy of baselines, linear mixers,
+        random-perturbation controls, and causal curvature ablations.
+      </p>
+    </div>
+
+    <div class="pattern-grid">
+      <div class="pattern-card">
+        <div class="pattern-icon ic-seq"><i class="fas fa-Microchip"></i><i class="fas fa-stopwatch"></i></div>
+        <h4>Compute &amp; Voting Baselines</h4>
+        <p>Isolate whether extra recurrent depth or independent 2-branch sampling alone accounts for accuracy gains.</p>
+        <div class="pattern-roles">
+          <span class="role-chip">S0: Single 4-Step</span>
+          <span class="role-chip">S1: Deeper 5-Step</span>
+          <span class="role-chip">P0: 2-Branch Vote</span>
+          <span class="role-chip">P1: Oracle Best-of-2</span>
+        </div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-icon ic-mix"><i class="fas fa-sliders"></i></div>
+        <h4>Linear Mixing Controls</h4>
+        <p>Test whether simple hidden-state interpolation ($M_0$) or linear velocity averaging without midpoint evaluation ($M_1$) suffices.</p>
+        <div class="pattern-roles">
+          <span class="role-chip">M0: State Mix</span>
+          <span class="role-chip">M1: Update Mix (C_t=0)</span>
+          <span class="role-chip">C0: Visit No Return</span>
+        </div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-icon ic-dis"><i class="fas fa-dice"></i></div>
+        <h4>Noise &amp; Direction Controls</h4>
+        <p>Rule out generic stochastic regularisation by matching exact update shift norms ($R_0$) or midpoint probe distance ($E_0$).</p>
+        <div class="pattern-roles">
+          <span class="role-chip">R0: Norm-Matched Noise</span>
+          <span class="role-chip">E0: Random-Dir Excursion</span>
+        </div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-icon ic-del"><i class="fas fa-route"></i></div>
+        <h4>TEBDİL &amp; Curvature Suite</h4>
+        <p>Compare full midpoint excursion ($E_1, E_2$) directly against stripped ($E_1^{\text{no-curv}}$) and randomized ($E_1^{\text{rand-curv}}$) curvature.</p>
+        <div class="pattern-roles">
+          <span class="role-chip">E1: Fixed Excursion</span>
+          <span class="role-chip">E2: Adaptive Policy</span>
+          <span class="role-chip">E1_no_curv</span>
+          <span class="role-chip">E1_rand_curv</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rm-table-wrap" style="margin-top: 2rem;">
+      <table class="rm-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Category</th>
+            <th>State Update Equation at Step $t=2$</th>
+            <th>Calls (3-tok)</th>
+            <th>Confounder Ruled Out</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><b>S0</b></td><td><span class="pat-tag pat-seq">Baseline</span></td><td>$H_3^A = F_{\theta,2}(H_2^A)$</td><td>7.33</td><td>Standard deterministic LoopLM baseline</td></tr>
+          <tr><td><b>S1</b></td><td><span class="pat-tag pat-seq">Compute</span></td><td>5 recurrent steps ($T{=}5$ via extra final block evaluation)</td><td>9.33</td><td>Extra recurrent depth on a single trajectory</td></tr>
+          <tr><td><b>P0</b></td><td><span class="pat-tag pat-seq">Ensemble</span></td><td>Independent $H_{1:4}^A, H_{1:4}^B$; confidence-weighted vote</td><td>12.83</td><td>Independent parallel trajectories without interaction</td></tr>
+          <tr><td><b>P1</b></td><td><span class="pat-tag pat-seq">Oracle</span></td><td>$\arg\max_{y \in \{y^A, y^B\}} \mathbb{I}[y = y^*]$ (uses gold label)</td><td>12.83</td><td>Upper bound of non-interacting 2-branch selection</td></tr>
+          <tr><td><b>M0</b></td><td><span class="pat-tag pat-mix">Linear</span></td><td>$H_3^{M_0} = F_{\theta,2}((1-\gamma)H_2^A + \gamma H_2^B)$ (collapses to midpoint)</td><td>12.83</td><td>Direct state interpolation without anchor return</td></tr>
+          <tr><td><b>M1</b></td><td><span class="pat-tag pat-mix">Linear</span></td><td>$H_3^{M_1} = H_2^A + (1-\alpha\beta)V_2^A + \alpha\beta V_2^B$</td><td>12.83</td><td>Linear combination of endpoint updates ($C_2 = 0$)</td></tr>
+          <tr><td><b>C0</b></td><td><span class="pat-tag pat-mix">Topology</span></td><td>$H_3^{C_0} = H_2^{\mathrm{visit}} + V_2^{\mathrm{visit}}$ (no return to $H_2^A$)</td><td>12.83</td><td>Necessity of returning update vector to $H_2^A$</td></tr>
+          <tr><td><b>R0</b></td><td><span class="pat-tag pat-dis">Noise</span></td><td>$H_3^{R_0} = H_3^A + \|\Delta^{\mathrm{visit}}_2\|_F \cdot u / \|u\|_F$</td><td>12.83</td><td>Generic norm-matched random state perturbation</td></tr>
+          <tr><td><b>E0</b></td><td><span class="pat-tag pat-dis">Direction</span></td><td>Excursion to $H_2^A + \alpha\|H_2^B - H_2^A\|_F \cdot w / \|w\|_F$</td><td>14.67</td><td>Midpoint evaluation in a random direction</td></tr>
+          <tr><td><b>E1_no_curv</b></td><td><span class="pat-tag pat-del">Ablation</span></td><td>$H_3 = H_2^A + (1-\beta)V_2^A + \beta(V_2^{\mathrm{visit}} - C_2)$</td><td>14.67</td><td>Verifies $E_1 - C_2 \equiv M_1$ causally</td></tr>
+          <tr><td><b>E1_rand_curv</b></td><td><span class="pat-tag pat-del">Ablation</span></td><td>Replaces $C_2$ with random vector of identical norm $\|C_2\|_F$</td><td>14.67</td><td>Tests whether $C_2$ direction (not just norm) matters</td></tr>
+          <tr class="row-ours"><td><b>E1 (Ours)</b></td><td><span class="pat-tag pat-del">TEBDİL</span></td><td>$H_3^{A'} = H_2^A + (1-\beta)V_2^A + \beta \tilde{V}_2^{\mathrm{visit}}$ ($\alpha{=}0.5, \beta{=}0.5$)</td><td>14.67</td><td>Full cooperative latent midpoint excursion</td></tr>
+          <tr class="row-ours"><td><b>E2 (Ours)</b></td><td><span class="pat-tag pat-del">TEBDİL</span></td><td>Triggers $E_1$ iff $m_2^A \le 0.70 \lor \mathcal{H}_2^A \ge 1.20$ inside trust window</td><td>14.03</td><td>Label-free uncertainty-gated excursion</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     MAIN EXPERIMENTAL RESULTS (PHASE 4 TEST + PHASE 2/3 VALIDATION)
+============================================================ -->
+<section class="section rm-bg-soft" id="results">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Empirical Evaluation on ByteDance/Ouro-1.4B-Thinking</span>
+      <h2 class="title is-3 rm-section-title">Main Results &amp; Compute Frontier</h2>
+      <p class="rm-section-sub">
+        All hyperparameters ($\eta{=}0.25, \alpha{=}0.5, \beta{=}0.5, t_{\mathrm{visit}}{=}2$, adaptive thresholds)
+        were frozen on the validation split before running Phase 4 on held-out test templates across seeds <code>42</code> and <code>1042</code>.
+      </p>
+    </div>
+
+    <!-- Held-Out Test Table -->
+    <h4 style="font-weight:800; color:var(--rm-ink); margin-bottom:0.6rem;">
+      1. Held-Out Test Split Performance (Phase 4 &middot; $n = 36$ Instances across 3 Reasoning Families)
+    </h4>
+    <div class="rm-table-wrap">
+      <table class="rm-table" id="phase4TestTable"></table>
+    </div>
+
+    <!-- Task Family Breakdown + Pareto Frontier SVG -->
+    <div class="grid-2" style="margin-top: 1.6rem;">
+      <div class="figure-card">
+        <h4 style="font-weight:800; font-size:0.98rem; color:var(--rm-ink); margin-bottom:0.55rem;">
+          <i class="fas fa-chart-scatter" style="color:var(--rm-primary); margin-right:0.35rem;"></i>
+          Held-Out Test Accuracy vs. Recurrent Block Calls
+        </h4>
+        <svg id="paretoChartSvg" viewBox="0 0 440 250" style="width:100%; height:auto;"></svg>
+        <p class="figure-caption" style="margin-top:0.5rem;">
+          <b>Pareto-Optimal Frontier:</b> <code>S0</code> ($7.33$ calls, $22.22\%$), <code>M1</code> ($12.83$ calls, $25.00\%$), and <code>E2</code> ($14.03$ calls, $27.78\%$). Note that <code>E2</code> surpasses even the non-interacting 2-branch oracle <code>P1</code> ($25.00\%$) due to emergent midpoint rescue on arithmetic.
+        </p>
+      </div>
+
+      <div class="figure-card">
+        <h4 style="font-weight:800; font-size:0.98rem; color:var(--rm-ink); margin-bottom:0.55rem;">
+          <i class="fas fa-layer-group" style="color:var(--rm-emerald); margin-right:0.35rem;"></i>
+          Held-Out Test Accuracy by Task Family ($n=12$ per family)
+        </h4>
+        <div class="rm-table-wrap" style="box-shadow:none;">
+          <table class="rm-table" id="familyBreakdownTable"></table>
+        </div>
+        <div class="insight-box" style="margin-top:0.8rem; font-size:0.85rem;">
+          <b>Key Observation:</b> Extra single-branch depth (<code>S1</code>) and confidence voting (<code>P0</code>) yield $0\%$ gain over <code>S0</code> ($22.22\%$). Linear update mixing (<code>M1</code>) rescues graph instance <code>graph_test_005</code> ($+2.78\%$), while only <code>E1</code> and <code>E2</code> rescue both <code>graph_test_005</code> and <code>arith_test_003</code> ($+5.56\%$).
+        </div>
+      </div>
+    </div>
+
+    <!-- Validation 12-Method Causal Curvature Table -->
+    <h4 style="font-weight:800; color:var(--rm-ink); margin: 2.2rem 0 0.6rem;">
+      2. Validation 12-Method Control &amp; Causal Curvature Ablation Suite (Phase 3 &middot; $n = 18$)
+    </h4>
+    <div class="rm-table-wrap">
+      <table class="rm-table" id="phase3ValidationTable"></table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SCALING: PHASE 1 (ALPHA x BETA) GRID & DIMENSION ABLATIONS
+============================================================ -->
+<section class="section" id="scaling">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Sensitivity &amp; Boundary Verification</span>
+      <h2 class="title is-3 rm-section-title">Excursion Grid $(\alpha \times \beta)$ &amp; Schedule Ablations</h2>
+      <p class="rm-section-sub">
+        Phase 1 sweeps 20 $(\alpha, \beta)$ pairs across $\alpha \in \{0.0, 0.25, 0.5, 0.75, 1.0\} \times \beta \in \{0.0, 0.25, 0.5, 1.0\}$,
+        verifying exact $0.0$ identity along the $\alpha{=}0$ and $\beta{=}0$ boundaries and smooth interior scaling.
+      </p>
+    </div>
+
+    <div class="grid-2">
+      <div class="figure-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.6rem;">
+          <h4 style="font-weight:800; font-size:0.98rem; color:var(--rm-ink); margin:0;">
+            Interactive $5 \times 4$ $(\alpha, \beta)$ Sensitivity Heatmap
+          </h4>
+          <select id="gridMetricSelect" class="stage-select" style="font-size:0.78rem; padding:0.3rem 0.6rem;">
+            <option value="mean_curvature_frob">Nonlinear Curvature ||C₂||_F</option>
+            <option value="mean_delta_gold_logprob">Gold Log-Prob Delta (Δ log p)</option>
+            <option value="mean_max_abs_logit_diff">Max Abs Logit Diff vs S0</option>
+            <option value="mean_js_divergence">JS Divergence vs S0</option>
+          </select>
+        </div>
+        <div id="alphaBetaHeatmap" class="heatmap-grid"></div>
+        <p class="figure-caption" style="margin-top:0.75rem;">
+          Every cell with $\alpha{=}0$ or $\beta{=}0$ produces <b>exact $0.000000$ deviation</b> from $S_0$. Peak nonlinear curvature $\|C_2\|_F = 19.82$ occurs at midpoint $\alpha{=}0.50$.
+        </p>
+      </div>
+
+      <div class="figure-card">
+        <h4 style="font-weight:800; font-size:0.98rem; color:var(--rm-ink); margin-bottom:0.6rem;">
+          Schedule Step ($t_{\mathrm{visit}}$) &times; Token Scope ($2 \times 2$ Ablation)
+        </h4>
+        <div class="rm-table-wrap" style="box-shadow:none;">
+          <table class="rm-table" id="dimAblationTable"></table>
+        </div>
+        <div class="insight-box" style="margin-top:0.9rem; font-size:0.86rem;">
+          <b>Why $t_{\mathrm{visit}} = 2$ + <code>full</code> scope is optimal:</b>
+          At $t{=}1$, the donor perturbation has just been injected and has not yet evolved through $F_{\theta,1}$, so visiting at $t{=}1$ fails to improve accuracy ($11.11\%$). Waiting until $t{=}2$ after one full recurrent evolution with <code>full</code> sequence scope doubles accuracy to $22.22\%$.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CASE STUDY (DARK SECTION)
+============================================================ -->
+<section class="section rm-bg-dark" id="case-study">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Mechanistic Case Studies</span>
+      <h2 class="title is-3 rm-section-title">How Midpoint Excursion Rescues Failed Trajectories</h2>
+      <p class="rm-section-sub">
+        Three real trace replays from <code>ByteDance/Ouro-1.4B-Thinking</code> illustrating emergent cooperative rescue,
+        causal curvature necessity, and honest over-excursion failure modes.
+      </p>
+    </div>
+
+    <div class="case-studies">
+      <!-- Case 1: Emergent Cooperative Rescue -->
+      <div class="case-card r1">
+        <span class="case-tag"><i class="fas fa-sparkles"></i> Case 1 &middot; Emergent Rescue</span>
+        <h4 style="font-weight:800; font-size:1.02rem; margin:0;"><code>arith_test_003</code> (Gold = 48)</h4>
+        <div class="case-body">
+          <b>Prompt:</b> Calculate step by step: (17 + 8) * 3 - 27 = ?<br><br>
+          &bull; <b>S0 (Branch A alone):</b> <code>42</code> (&cross; Wrong)<br>
+          &bull; <b>Donor B alone:</b> <code>40</code> (&cross; Wrong)<br>
+          &bull; <b>P0 &amp; P1 Oracle:</b> <code>42</code> (&cross; Both branches fail!)<br>
+          &bull; <b>M1 (Linear Mix, C₂=0):</b> <code>42</code> (&cross; Wrong)<br>
+          &bull; <b>E1 &amp; E2 (Midpoint Excursion):</b><br>
+          At $t{=}2$, $m_2^A = 0.625 \le 0.70$ triggers excursion. Evaluating $F_{\theta,2}(H_2^{\mathrm{visit}})$ yields $\|C_2\|_F = 44.30$, boosting gold log-prob by <b>+1.531</b>.
+        </div>
+        <div class="case-answer"><i class="fas fa-check-circle"></i> E1 / E2 Final = 48 (Rescued!)</div>
+      </div>
+
+      <!-- Case 2: Causal Curvature Rescue -->
+      <div class="case-card r2">
+        <span class="case-tag"><i class="fas fa-bezier-curve"></i> Case 2 &middot; Causal Curvature</span>
+        <h4 style="font-weight:800; font-size:1.02rem; margin:0;"><code>graph_validation_002</code> (Gold = 17)</h4>
+        <div class="case-body">
+          <b>Prompt:</b> Directed graph shortest path from S to T (S&rarr;A=9, S&rarr;B=5, A&rarr;B=4, A&rarr;C=5, B&rarr;C=6, A&rarr;T=9, B&rarr;T=15, C&rarr;T=6).<br><br>
+          &bull; <b>S0 / P0 / R0 / E0:</b> <code>13</code> (&cross; Wrong)<br>
+          &bull; <b>M1 / E1_no_curv (C₂=0):</b> <code>13</code> (&cross; Wrong)<br>
+          &bull; <b>E1_rand_curv (Random C₂):</b> <code>13</code> (&cross; Wrong)<br>
+          &bull; <b>E1 (True Curvature C₂):</b><br>
+          True midpoint curvature $\|C_2\|_F = 64.85$ ($36.5\%$ of update norm) shifts prediction to exact shortest path $5+6+6 = 17$.
+        </div>
+        <div class="case-answer"><i class="fas fa-check-circle"></i> E1 Final = 17 (Curvature-Only Rescue)</div>
+      </div>
+
+      <!-- Case 3: Honest Degradation Analysis -->
+      <div class="case-card r3">
+        <span class="case-tag"><i class="fas fa-triangle-exclamation"></i> Case 3 &middot; Honest Failure Mode</span>
+        <h4 style="font-weight:800; font-size:1.02rem; margin:0;"><code>arith_validation_003</code> (Gold = 38)</h4>
+        <div class="case-body">
+          <b>Prompt:</b> If x = 13 and y = 4 * x - 14, what is the value of y?<br><br>
+          &bull; <b>S0 (Single Branch):</b> <code>38</code> (&check; Barely correct, $m_2^A = 0.258$)<br>
+          &bull; <b>Donor B:</b> <code>33</code> (&cross; Wrong)<br>
+          &bull; <b>Fixed E1 ($\beta=0.5$):</b> <code>33</code> (&cross; Degraded, $\Delta \log p = -0.354$)<br><br>
+          <b>Diagnostic Lesson:</b> When $H_2^A$ sits near a decision boundary and Donor $B$ falls into a wrong basin, fixed $\beta{=}0.5$ pulls $A$ across the boundary—motivating confidence-weighted $\beta(m_t^A, m_t^B)$.
+        </div>
+        <div class="case-answer"><i class="fas fa-wrench"></i> Motivates Margin-Proportional β Damping</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TRACE EXPLORER TABLE (ALL REAL RECORDS)
+============================================================ -->
+<section class="section rm-bg-soft" id="examples">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.4rem;">
+      <span class="rm-eyebrow">Full Artifact Transparency</span>
+      <h2 class="title is-3 rm-section-title">Interactive Trace Explorer</h2>
+      <p class="rm-section-sub">
+        Browse and filter real execution traces from <code>results/phase4_adaptive/traces.jsonl</code> and
+        <code>results/phase3_ablations/traces.jsonl</code>. Click any row to load it into the Live Simulator above.
+      </p>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; align-items:center; justify-content:space-between;">
+      <div style="display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center;">
+        <select id="explorerSplitFilter" class="stage-select">
+          <option value="test_phase4">Held-Out Test (Phase 4 &middot; 252 traces)</option>
+          <option value="validation_phase3">Validation Suite (Phase 3 &middot; 216 traces)</option>
+        </select>
+        <select id="explorerFamilyFilter" class="stage-select">
+          <option value="all">All Task Families</option>
+          <option value="arithmetic">Arithmetic</option>
+          <option value="logic">2-SAT Logic</option>
+          <option value="graph">Graph Shortest Path</option>
+        </select>
+        <select id="explorerMethodFilter" class="stage-select">
+          <option value="all">All Methods</option>
+          <option value="S0">S0</option>
+          <option value="P0">P0</option>
+          <option value="P1">P1</option>
+          <option value="M0">M0</option>
+          <option value="M1">M1</option>
+          <option value="E1">E1</option>
+          <option value="E2">E2</option>
+          <option value="E1_no_curv">E1_no_curv</option>
+          <option value="E1_rand_curv">E1_rand_curv</option>
+        </select>
+      </div>
+      <span id="explorerCountBadge" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--rm-sub); font-weight:700;"></span>
+    </div>
+
+    <div class="rm-table-wrap" style="max-height: 440px; overflow-y: auto;">
+      <table class="rm-table" id="traceExplorerTable">
+        <thead style="position: sticky; top: 0; z-index: 3;">
+          <tr>
+            <th>Problem ID</th>
+            <th>Family</th>
+            <th>Seed</th>
+            <th>Method</th>
+            <th>Gold</th>
+            <th>Pred</th>
+            <th>Status</th>
+            <th>$\|C_2\|_F$</th>
+            <th>$\Delta \log p(\text{gold})$</th>
+            <th>Calls</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="traceExplorerBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     ROADMAP TO FINAL PAPER
+============================================================ -->
+<section class="section rm-bg-tint" id="roadmap">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.5rem;">
+      <span class="rm-eyebrow">Pre-Computation &amp; Publication Readiness</span>
+      <h2 class="title is-3 rm-section-title">Where We Are &amp; Next Steps to Final Paper</h2>
+      <p class="rm-section-sub">
+        All core infrastructure, exact adapter equivalence tests, 12-method control suites, and pilot/test
+        validation runs are complete (~80% to publication). Here is the exact 3-step plan before generating the paper.
+      </p>
+    </div>
+
+    <div class="gain-grid">
+      <div class="gain-card">
+        <div class="num">Step 1</div>
+        <h5>Scale Test Sample Size ($n = 150\text{--}300$)</h5>
+        <p>
+          Expand held-out evaluation from $n{=}36$ to $150\text{--}300$ instances ($50\text{--}100$ per family across 3 seeds).
+          At $+5.56\%$ effect size, $n \ge 180$ tightens paired bootstrap 95% CIs and powers McNemar's test ($p &lt; 0.05$).
+        </p>
+      </div>
+      <div class="gain-card">
+        <div class="num">Step 2</div>
+        <h5>Margin-Proportional $\beta(m_t^A, m_t^B)$ Damping</h5>
+        <p>
+          Replace hard binary gating in $E_2$ with smooth confidence weighting $\beta_t = \beta_{\max} \cdot \sigma(m_t^{\mathrm{visit}} - m_t^A)$
+          to prevent over-excursion on borderline-correct instances like <code>arith_validation_003</code>.
+        </p>
+      </div>
+      <div class="gain-card">
+        <div class="num">Step 3</div>
+        <h5>Paper Generation &amp; Vector Figures</h5>
+        <p>
+          Compile the LaTeX manuscript (<code>paper/main.tex</code>) with publication-grade PDF/SVG figures generated
+          directly from <code>reports/final_results.json</code>, including theorem proofs and qualitative trace appendices.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     BIBTEX
+============================================================ -->
+<section class="section rm-bg-soft" id="bibtex">
+  <div class="container is-max-desktop">
+    <div class="has-text-centered" style="margin-bottom: 1.4rem;">
+      <span class="rm-eyebrow">Cite</span>
+      <h2 class="title is-3 rm-section-title">BibTeX</h2>
+    </div>
+    <div class="bibtex-box">
+      <button class="bibtex-copy" id="copyBibBtn" type="button">
+        <i class="fas fa-copy"></i>&nbsp;Copy
+      </button>
+      <pre id="bibtexCode">@article{tebdil2026,
+  title   = {TEBD{\.I}L: Cooperative Latent Excursions for Recurrent Reasoning in Looped Language Models},
+  author  = {Kartkaya, Alper},
+  journal = {arXiv preprint},
+  year    = {2026},
+  note    = {Evaluated on ByteDance/Ouro-1.4B-Thinking across 12 inference-time latent control regimes}
+}</pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer" style="padding: 2rem 1.5rem; background: #f8fafc; border-top: 1px solid #e2e8f0;">
+  <div class="container is-max-desktop has-text-centered">
+    <p style="color:#475569; font-size:0.9rem;">
+      <b>TEBDİL Research Observatory</b> &middot; Powered by verified experimental traces from <code>reports/final_results.json</code> and <code>results/*/traces.jsonl</code>.
+    </p>
+  </div>
+</footer>
+
+<script src="static/tebdil_data.js"></script>
+<script src="static/app.js"></script>
+</body>
+</html>
