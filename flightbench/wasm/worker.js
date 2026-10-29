@@ -1,11 +1,12 @@
 import {Landing, baseline, loadRuntime, validateControl} from './engine.js';
 
-let runtime, contract, landing, timer, mode, command, proxy, invite, generation = 0;
+const PROXY = 'https://flightbench-jev.alperkartkaya.workers.dev/decide';
+let runtime, contract, landing, timer, mode, model, command, generation = 0;
 let pending, runId, decisionInfo = null, decisionCount = 0, latencyMs = null;
 const emit = type => postMessage({type, observation: landing.observation,
   result: landing.result(), done: landing.done, mode, run_id: runId,
   decision_count: decisionCount, decision_info: decisionInfo, latency_ms: latencyMs});
-const stop = () => {generation++; clearTimeout(timer); pending?.abort(); invite = '';};
+const stop = () => {generation++; clearTimeout(timer); pending?.abort();};
 
 async function decision(run) {
   if (mode === 'baseline') {
@@ -19,12 +20,12 @@ async function decision(run) {
     pending = controller;
     const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const response = await fetch(proxy, {method: 'POST', cache: 'no-store', redirect: 'error',
-        signal: controller.signal, headers: {'Content-Type': 'application/json', Authorization: `Bearer ${invite}`},
-        body: JSON.stringify(input)});
+      const response = await fetch(PROXY, {method: 'POST', cache: 'no-store', redirect: 'error',
+        signal: controller.signal, headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({...input, model})});
       if (!response.ok) throw Error(`Jev proxy HTTP ${response.status}; flight stopped`);
       const data = await response.json();
-      if (data.model !== 'jev-1.13.0') throw Error('Unexpected Jev model');
+      if (data.model !== model) throw Error('Unexpected Jev model');
       validateControl(data.command);
       for (const axis of Object.keys(contract.trim)) {
         const action = phase[axis].actions.find(a => a.id === data.action_ids?.[axis]);
@@ -75,10 +76,8 @@ onmessage = async ({data}) => {
       mode = data.mode;
       if (!['human', 'baseline', 'jev'].includes(mode)) throw Error('Unknown mode');
       if (mode === 'jev') {
-        const url = new URL(data.proxy);
-        if (url.protocol !== 'https:' || url.pathname !== '/decide' || url.search || url.hash || url.username || url.password) throw Error('Use an HTTPS proxy URL ending /decide');
-        if (!data.invite || data.invite.length < 43) throw Error('A valid Jev access token is required');
-        proxy = url.href; invite = data.invite;
+        model = data.model ?? 'jev-1.13.0';
+        if (!['jev-1.13.0', 'jev-1.14.0'].includes(model)) throw Error('Unsupported Jev model');
       }
       landing = new Landing(runtime, contract); command = {...contract.trim};
       emit('state'); tick(generation);
