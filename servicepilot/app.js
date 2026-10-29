@@ -1,5 +1,5 @@
 // ServicePilot — Active Evidence Orchestration UI (Vanilla JS, no build step).
-// Works with FastAPI (/api/*) and falls back deterministically when served statically (e.g. GitHub Pages /servicepilot/).
+// Works with FastAPI (/api/*) and falls back deterministically when served statically (e.g. GitHub Pages).
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -7,12 +7,13 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
 const num = (x, d = 2) => (x == null ? "—" : Number(x).toFixed(d));
 
-const NO_FINDING = "Kontrol edildi, belirgin bir bulgu yok / değerler normal.";
-const DRAFT_KEY = "servicepilot_case_draft_v1";
-const LOCAL_CASES_KEY = "servicepilot_local_cases_v1";
-const LOCAL_SETTINGS_KEY = "servicepilot_local_settings_v1";
+const DRAFT_KEY = "servicepilot_case_draft_v2";
+const LOCAL_CASES_KEY = "servicepilot_local_cases_v2";
+const LOCAL_SETTINGS_KEY = "servicepilot_local_settings_v2";
+const MAX_ATT_COUNT = 4;
+const MAX_ATT_BYTES = 750000; // ~500 KB base64
 
-// ---------- Embedded Fallback Catalog & Deterministic RAEP (for static /servicepilot/ hosting) ----------
+// ---------- Embedded Taxonomy & Fallback Catalog ----------
 const FALLBACK_CATALOG = {
   nodes: {
     powertrain: { label: "Güç Aktarma", parent: null, children: ["engine", "transmission"] },
@@ -56,24 +57,226 @@ const SAFETY_RULES = [
   "fire", "brake failure", "isolation fault", "thermal runaway",
 ];
 
+// Complete 13 synthetic demo/replay scenarios matching app/scenarios.py
 const FALLBACK_SCENARIOS = [
-  { id: "lv_starter", title: "Marş basmıyor, tık tık ses", vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 184000 }, technician_note: "Sabah marşa basınca sadece tık tık ses geliyor, motor dönmüyor. Gösterge ışıkları sönük yanıyor.", dtc_codes: [], recent_repairs: "", expected: "lv_electrical", answers: { battery_voltage: "Kontak kapalı 21.4V, marş anında 14.8V'a düşüyor. Akü kutup başları oksitli.", connector_photo: "Akü kutup başlarında beyaz oksitlenme var, şase kablosu gevşek." } },
-  { id: "can_comm", title: "Aynı anda çoklu uyarı lambası", vehicle: { family: "Isuzu Citiport 12", fuel: "diesel", km: 412000 }, technician_note: "Göstergede aynı anda ABS, şanzıman ve motor uyarıları yandı, birkaç saniye sonra söndü. Araç normal sürülüyor.", dtc_codes: ["U0100", "U0121"], recent_repairs: "Geçen ay gösterge paneli değişti.", expected: "ecu_comm", answers: { can_resistance: "CAN-H / CAN-L arası 120Ω ölçüldü (60Ω olmalı); bir sonlandırma direnci devre dışı.", battery_voltage: "24.6V, normal." } },
-  { id: "power_loss", title: "Yokuşta çekiş kaybı (belirsiz)", vehicle: { family: "Isuzu Novo Lux", fuel: "diesel", km: 265000 }, technician_note: "Yokuşta çekiş düşüyor, araç ileri gitmekte zorlanıyor.", dtc_codes: [], recent_repairs: "", expected: "transmission", answers: { dtc_scan: "Aktif kod yok; şanzımanda geçmiş P0868 (düşük hat basıncı) kaydı var.", trans_log: "Şanzıman yağı 118°C'ye çıkıyor, 3-4 vites geçişinde patinaj kaydı var.", fluid_check: "Motor yağı ve antifriz normal seviyede." } },
-  { id: "engine_overheat", title: "Hararet ve antifriz eksilmesi", vehicle: { family: "Isuzu N-Wide", fuel: "diesel", km: 98000 }, technician_note: "Uzun yolda hararet göstergesi kırmızıya yaklaşıyor, antifriz eksiliyor.", dtc_codes: ["P0217"], recent_repairs: "", expected: "engine", answers: { fluid_check: "Antifriz minimumun altında, yağda emülsiyon yok, radyatör altında sızıntı izi var." } },
-  { id: "hv_charging", title: "Şarj 2-3 dakikada kesiliyor", vehicle: { family: "Isuzu Novociti Volt", fuel: "electric", km: 54000 }, technician_note: "Araç şarja takılıyor ama şarj 2-3 dakika sonra kesiliyor.", dtc_codes: [], recent_repairs: "", expected: "hv_charging", answers: { charging_log: "İstasyon kaydı: 'Vehicle-side contactor open'; oturum 140. saniyede sonlandı. Farklı istasyonda da aynı.", connector_photo: "Şarj soketinde pin 4'te renk değişimi ve yanma izi." } },
-  { id: "hv_battery", title: "Menzil düşüşü + batarya sıcaklık uyarısı", vehicle: { family: "Isuzu Citivolt 12", fuel: "electric", km: 76000 }, technician_note: "Menzil son haftada belirgin düştü, batarya sıcaklık uyarısı ara ara yanıyor.", dtc_codes: [], recent_repairs: "", expected: "hv_battery", answers: { hv_isolation: "İzolasyon direnci 2.4 MΩ, normal.", charging_log: "Şarj oturumları normal tamamlanıyor; BMS modül 3'te 180 mV hücre dengesizliği uyarısı." } },
-  { id: "hv_propulsion", title: "Kalkışta sarsıntı, çekiş kesiliyor", vehicle: { family: "Isuzu Citivolt 12", fuel: "electric", km: 31000 }, technician_note: "Araç kalkışta sarsılıyor, bazen çekiş tamamen kesiliyor ve 'sürüş sistemi arızası' uyarısı geliyor.", dtc_codes: ["P0A78"], recent_repairs: "", expected: "hv_inverter", answers: { hv_isolation: "İzolasyon direnci 2.1 MΩ, normal; batarya hücreleri dengeli." } },
-  { id: "intermittent_stall", title: "Seyirde ara ara stop etme (belirsiz)", vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 156000 }, technician_note: "Araç seyir halindeyken ara ara stop ediyor, birkaç saniye sonra tekrar çalışıyor.", dtc_codes: [], recent_repairs: "", expected: "lv_electrical", answers: { dtc_scan: "Aktif kod yok; geçmişte U3003 (besleme voltajı) kaydı var.", battery_voltage: "Akü 24.9V normal; stop anında besleme voltajı 9V'a düşüyor.", connector_photo: "Kontak anahtarı arkasındaki konnektörde gevşeklik ve oksitlenme." } },
-  { id: "critical_fire", title: "Torpido arkasından yanık kokusu", vehicle: { family: "Isuzu Citiport 12", fuel: "diesel", km: 520000 }, technician_note: "Sürücü torpido arkasından yanık kokusu geldiğini ve hafif duman gördüğünü bildirdi.", dtc_codes: [], recent_repairs: "", expected: "ESCALATE", answers: {} },
-  { id: "critical_brake", title: "Fren pedalı derine gidiyor", vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 230000 }, technician_note: "Fren pedalı derine gidiyor, araç zor duruyor, hava basıncı uyarısı yanıyor.", dtc_codes: [], recent_repairs: "", expected: "ESCALATE", answers: {} },
-  { id: "brake_noise", title: "Frende gıcırtı, performans normal", vehicle: { family: "Isuzu Novo", fuel: "diesel", km: 143000 }, technician_note: "Frenlemede arka tekerden gıcırtı sesi geliyor, frenleme performansı normal.", dtc_codes: [], recent_repairs: "", expected: "brakes", answers: { brake_pressure: "Sistem basıncı 8.2 bar, kaçak yok. Arka balatalar aşınma sınırında." } },
-  { id: "steering_vibration", title: "Yüksek hızda direksiyon titremesi", vehicle: { family: "Isuzu Kendo", fuel: "diesel", km: 87000 }, technician_note: "80 km/s üzerinde direksiyonda titreme var, araç hafif sağa çekiyor.", dtc_codes: [], recent_repairs: "", expected: "steering_suspension", answers: { road_test: "80-90 km/s arası titreme belirgin, sağ ön lastikte düzensiz aşınma, rot ayarı bozuk." } },
-  { id: "vague_noise", title: "Garip ses (çok eksik vaka)", vehicle: { family: "Isuzu Novo", fuel: "diesel", km: 301000 }, technician_note: "Araçta garip bir ses var, müşteri şikayetçi.", dtc_codes: [], recent_repairs: "", expected: "engine", answers: { sound_video: "Ses motor bölmesinden geliyor; rölantide metalik tıkırtı, devirle artıyor.", dtc_scan: "Aktif kod yok.", fluid_check: "Motor yağı minimumda ve koyu; antifriz normal." } },
+  {
+    id: "lv_starter", title: "Marş basmıyor, tık tık ses",
+    vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 184000 },
+    technician_note: "Sabah marşa basınca sadece tık tık ses geliyor, motor dönmüyor. Gösterge ışıkları sönük yanıyor.",
+    dtc_codes: [], recent_repairs: "", expected: "lv_electrical",
+    answers: {
+      battery_voltage: "Kontak kapalı 21.4V, marş anında 14.8V'a düşüyor. Akü kutup başları oksitli.",
+      connector_photo: "Akü kutup başlarında beyaz oksitlenme var, şase kablosu gevşek.",
+    },
+    fixture_signals: {
+      initial: { route: { lv_electrical: 0.72, ecu_comm: 0.16, engine: 0.12 }, sufficient: 0.38, critical: 0.06, priority: { score: 1.6, probabilities: {} }, has: {} },
+      after: {
+        battery_voltage: { route: { lv_electrical: 0.94, ecu_comm: 0.04, engine: 0.02 }, sufficient: 0.90, critical: 0.05, priority: { score: 1.6, probabilities: {} }, has: { battery_voltage: 0.96 } },
+        connector_photo: { route: { lv_electrical: 0.91, ecu_comm: 0.06, engine: 0.03 }, sufficient: 0.86, critical: 0.05, priority: { score: 1.6, probabilities: {} }, has: { connector_photo: 0.95 } },
+      },
+    },
+  },
+  {
+    id: "can_comm", title: "Aynı anda çoklu uyarı lambası",
+    vehicle: { family: "Isuzu Citiport 12", fuel: "diesel", km: 412000 },
+    technician_note: "Göstergede aynı anda ABS, şanzıman ve motor uyarıları yandı, birkaç saniye sonra söndü. Araç normal sürülüyor.",
+    dtc_codes: ["U0100", "U0121"], recent_repairs: "Geçen ay gösterge paneli değişti.", expected: "ecu_comm",
+    answers: {
+      can_resistance: "CAN-H / CAN-L arası 120Ω ölçüldü (60Ω olmalı); bir sonlandırma direnci devre dışı.",
+      battery_voltage: "24.6V, normal.",
+    },
+    fixture_signals: {
+      initial: { route: { ecu_comm: 0.68, lv_electrical: 0.22, brakes: 0.06, transmission: 0.04 }, sufficient: 0.34, critical: 0.12, priority: { score: 1.9, probabilities: {} }, has: { battery_voltage: 0.88, service_history: 0.82, connector_photo: 0.85 } },
+      after: {
+        can_resistance: { route: { ecu_comm: 0.95, lv_electrical: 0.03, brakes: 0.01, transmission: 0.01 }, sufficient: 0.92, critical: 0.10, priority: { score: 1.9, probabilities: {} }, has: { battery_voltage: 0.88, service_history: 0.82, connector_photo: 0.85, can_resistance: 0.98 } },
+        battery_voltage: { route: { ecu_comm: 0.82, lv_electrical: 0.12, brakes: 0.04, transmission: 0.02 }, sufficient: 0.72, critical: 0.10, priority: { score: 1.9, probabilities: {} }, has: { battery_voltage: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "power_loss", title: "Yokuşta çekiş kaybı (belirsiz)",
+    vehicle: { family: "Isuzu Novo Lux", fuel: "diesel", km: 265000 },
+    technician_note: "Yokuşta çekiş düşüyor, araç ileri gitmekte zorlanıyor.",
+    dtc_codes: [], recent_repairs: "", expected: "transmission",
+    answers: {
+      dtc_scan: "Aktif kod yok; şanzımanda geçmiş P0868 (düşük hat basıncı) kaydı var.",
+      trans_log: "Şanzıman yağı 118°C'ye çıkıyor, 3-4 vites geçişinde patinaj kaydı var.",
+      fluid_check: "Motor yağı ve antifriz normal seviyede.",
+      sound_video: "Hızlanırken devir yükseliyor ama araç hızlanmıyor.",
+      road_test: "Yokuşta devir 2200'e fırlıyor, hız artmıyor; kavrama/şanzıman kaçırması var.",
+    },
+    fixture_signals: {
+      initial: { route: { engine: 0.52, transmission: 0.42, lv_electrical: 0.06 }, sufficient: 0.22, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: {} },
+      after: {
+        dtc_scan: { route: { transmission: 0.76, engine: 0.20, lv_electrical: 0.04 }, sufficient: 0.54, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: { dtc_scan: 0.95 } },
+        trans_log: { route: { transmission: 0.94, engine: 0.05, lv_electrical: 0.01 }, sufficient: 0.91, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: { dtc_scan: 0.95, trans_log: 0.96 } },
+        sound_video: { route: { transmission: 0.86, engine: 0.12, lv_electrical: 0.02 }, sufficient: 0.80, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: { sound_video: 0.95 } },
+        fluid_check: { route: { transmission: 0.84, engine: 0.14, lv_electrical: 0.02 }, sufficient: 0.78, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: { fluid_check: 0.95 } },
+        road_test: { route: { transmission: 0.93, engine: 0.06, lv_electrical: 0.01 }, sufficient: 0.90, critical: 0.10, priority: { score: 1.8, probabilities: {} }, has: { road_test: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "engine_overheat", title: "Hararet ve antifriz eksilmesi",
+    vehicle: { family: "Isuzu N-Wide", fuel: "diesel", km: 98000 },
+    technician_note: "Uzun yolda hararet göstergesi kırmızıya yaklaşıyor, antifriz eksiliyor.",
+    dtc_codes: ["P0217"], recent_repairs: "", expected: "engine",
+    answers: {
+      fluid_check: "Antifriz minimumun altında, yağda emülsiyon yok, radyatör altında sızıntı izi var.",
+    },
+    fixture_signals: {
+      initial: { route: { engine: 0.84, transmission: 0.08, ecu_comm: 0.05, lv_electrical: 0.03 }, sufficient: 0.46, critical: 0.22, priority: { score: 2.0, probabilities: {} }, has: {} },
+      after: {
+        fluid_check: { route: { engine: 0.94, transmission: 0.03, ecu_comm: 0.02, lv_electrical: 0.01 }, sufficient: 0.89, critical: 0.15, priority: { score: 2.0, probabilities: {} }, has: { fluid_check: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "hv_charging", title: "Şarj 2-3 dakikada kesiliyor",
+    vehicle: { family: "Isuzu Novociti Volt", fuel: "electric", km: 54000 },
+    technician_note: "Araç şarja takılıyor ama şarj 2-3 dakika sonra kesiliyor.",
+    dtc_codes: [], recent_repairs: "", expected: "hv_charging",
+    answers: {
+      charging_log: "İstasyon kaydı: 'Vehicle-side contactor open'; oturum 140. saniyede sonlandı. Farklı istasyonda da aynı.",
+      connector_photo: "Şarj soketinde pin 4'te renk değişimi ve yanma izi.",
+    },
+    fixture_signals: {
+      initial: { route: { hv_charging: 0.64, hv_battery: 0.26, ecu_comm: 0.06, lv_electrical: 0.04 }, sufficient: 0.32, critical: 0.16, priority: { score: 2.2, probabilities: {} }, has: {} },
+      after: {
+        charging_log: { route: { hv_charging: 0.76, hv_battery: 0.14, lv_electrical: 0.06, ecu_comm: 0.04 }, sufficient: 0.52, critical: 0.15, priority: { score: 2.2, probabilities: {} }, has: { charging_log: 0.95 } },
+        connector_photo: { route: { hv_charging: 0.93, hv_battery: 0.04, lv_electrical: 0.02, ecu_comm: 0.01 }, sufficient: 0.90, critical: 0.14, priority: { score: 2.2, probabilities: {} }, has: { charging_log: 0.95, connector_photo: 0.95 } },
+      },
+    },
+  },
+  {
+    id: "hv_battery", title: "Menzil düşüşü + batarya sıcaklık uyarısı",
+    vehicle: { family: "Isuzu Citivolt 12", fuel: "electric", km: 76000 },
+    technician_note: "Menzil son haftada belirgin düştü, batarya sıcaklık uyarısı ara ara yanıyor.",
+    dtc_codes: [], recent_repairs: "", expected: "hv_battery",
+    answers: {
+      hv_isolation: "İzolasyon direnci 2.4 MΩ, normal.",
+      charging_log: "Şarj oturumları normal tamamlanıyor; BMS modül 3'te 180 mV hücre dengesizliği uyarısı.",
+    },
+    fixture_signals: {
+      initial: { route: { hv_battery: 0.62, hv_charging: 0.22, hv_inverter: 0.12, ecu_comm: 0.04 }, sufficient: 0.30, critical: 0.24, priority: { score: 2.1, probabilities: {} }, has: {} },
+      after: {
+        charging_log: { route: { hv_battery: 0.91, hv_charging: 0.05, hv_inverter: 0.03, ecu_comm: 0.01 }, sufficient: 0.86, critical: 0.20, priority: { score: 2.1, probabilities: {} }, has: { charging_log: 0.96 } },
+        hv_isolation: { route: { hv_battery: 0.89, hv_inverter: 0.07, hv_charging: 0.04 }, sufficient: 0.84, critical: 0.18, priority: { score: 2.1, probabilities: {} }, has: { hv_isolation: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "hv_propulsion", title: "Kalkışta sarsıntı, çekiş kesiliyor",
+    vehicle: { family: "Isuzu Citivolt 12", fuel: "electric", km: 31000 },
+    technician_note: "Araç kalkışta sarsılıyor, bazen çekiş tamamen kesiliyor ve 'sürüş sistemi arızası' uyarısı geliyor.",
+    dtc_codes: ["P0A78"], recent_repairs: "", expected: "hv_inverter",
+    answers: {
+      hv_isolation: "İzolasyon direnci 2.1 MΩ, normal; batarya hücreleri dengeli.",
+    },
+    fixture_signals: {
+      initial: { route: { hv_inverter: 0.86, hv_battery: 0.09, transmission: 0.05 }, sufficient: 0.72, critical: 0.25, priority: { score: 2.3, probabilities: {} }, has: {} },
+      after: {
+        hv_isolation: { route: { hv_inverter: 0.94, hv_battery: 0.04, transmission: 0.02 }, sufficient: 0.91, critical: 0.18, priority: { score: 2.3, probabilities: {} }, has: { hv_isolation: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "intermittent_stall", title: "Seyirde ara ara stop etme (belirsiz)",
+    vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 156000 },
+    technician_note: "Araç seyir halindeyken ara ara stop ediyor, birkaç saniye sonra tekrar çalışıyor.",
+    dtc_codes: [], recent_repairs: "", expected: "lv_electrical",
+    answers: {
+      dtc_scan: "Aktif kod yok; geçmişte U3003 (besleme voltajı) kaydı var.",
+      battery_voltage: "Akü 24.9V normal; stop anında besleme voltajı 9V'a düşüyor.",
+      connector_photo: "Kontak anahtarı arkasındaki konnektörde gevşeklik ve oksitlenme; konnektör oynatınca gösterge sönüyor.",
+      fluid_check: "Yağ ve antifriz normal.",
+    },
+    fixture_signals: {
+      initial: { route: { engine: 0.48, lv_electrical: 0.36, ecu_comm: 0.16 }, sufficient: 0.20, critical: 0.18, priority: { score: 2.0, probabilities: {} }, has: {} },
+      after: {
+        dtc_scan: { route: { lv_electrical: 0.72, ecu_comm: 0.18, engine: 0.10 }, sufficient: 0.48, critical: 0.16, priority: { score: 2.0, probabilities: {} }, has: { dtc_scan: 0.95 } },
+        battery_voltage: { route: { lv_electrical: 0.92, ecu_comm: 0.05, engine: 0.03 }, sufficient: 0.88, critical: 0.14, priority: { score: 2.0, probabilities: {} }, has: { dtc_scan: 0.95, battery_voltage: 0.96 } },
+        connector_photo: { route: { lv_electrical: 0.94, ecu_comm: 0.04, engine: 0.02 }, sufficient: 0.91, critical: 0.12, priority: { score: 2.0, probabilities: {} }, has: { connector_photo: 0.95 } },
+        fluid_check: { route: { lv_electrical: 0.68, ecu_comm: 0.20, engine: 0.12 }, sufficient: 0.45, critical: 0.16, priority: { score: 2.0, probabilities: {} }, has: { fluid_check: 0.95 } },
+      },
+    },
+  },
+  {
+    id: "critical_fire", title: "Torpido arkasından yanık kokusu",
+    vehicle: { family: "Isuzu Citiport 12", fuel: "diesel", km: 520000 },
+    technician_note: "Sürücü torpido arkasından yanık kokusu geldiğini ve hafif duman gördüğünü bildirdi.",
+    dtc_codes: [], recent_repairs: "", expected: "ESCALATE", answers: {},
+    fixture_signals: {
+      initial: { route: { lv_electrical: 0.65, ecu_comm: 0.25, engine: 0.10 }, sufficient: 0.40, critical: 0.92, priority: { score: 2.9, probabilities: {} }, has: {} },
+      after: {},
+    },
+  },
+  {
+    id: "critical_brake", title: "Fren pedalı derine gidiyor",
+    vehicle: { family: "Isuzu NPR 10", fuel: "diesel", km: 230000 },
+    technician_note: "Fren pedalı derine gidiyor, araç zor duruyor, hava basıncı uyarısı yanıyor.",
+    dtc_codes: [], recent_repairs: "", expected: "ESCALATE", answers: {},
+    fixture_signals: {
+      initial: { route: { brakes: 0.88, steering_suspension: 0.08, lv_electrical: 0.04 }, sufficient: 0.55, critical: 0.89, priority: { score: 2.9, probabilities: {} }, has: {} },
+      after: {},
+    },
+  },
+  {
+    id: "brake_noise", title: "Frende gıcırtı, performans normal",
+    vehicle: { family: "Isuzu Novo", fuel: "diesel", km: 143000 },
+    technician_note: "Frenlemede arka tekerden gıcırtı sesi geliyor, frenleme performansı normal.",
+    dtc_codes: [], recent_repairs: "", expected: "brakes",
+    answers: {
+      brake_pressure: "Sistem basıncı 8.2 bar, kaçak yok. Arka balatalar aşınma sınırında.",
+    },
+    fixture_signals: {
+      initial: { route: { brakes: 0.85, steering_suspension: 0.11, transmission: 0.04 }, sufficient: 0.74, critical: 0.12, priority: { score: 1.3, probabilities: {} }, has: {} },
+      after: {
+        brake_pressure: { route: { brakes: 0.96, steering_suspension: 0.03, transmission: 0.01 }, sufficient: 0.93, critical: 0.08, priority: { score: 1.3, probabilities: {} }, has: { brake_pressure: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "steering_vibration", title: "Yüksek hızda direksiyon titremesi",
+    vehicle: { family: "Isuzu Kendo", fuel: "diesel", km: 87000 },
+    technician_note: "80 km/s üzerinde direksiyonda titreme var, araç hafif sağa çekiyor.",
+    dtc_codes: [], recent_repairs: "", expected: "steering_suspension",
+    answers: {
+      road_test: "80-90 km/s arası titreme belirgin, sağ ön lastikte düzensiz aşınma, rot ayarı bozuk.",
+    },
+    fixture_signals: {
+      initial: { route: { steering_suspension: 0.86, brakes: 0.10, transmission: 0.04 }, sufficient: 0.72, critical: 0.14, priority: { score: 1.5, probabilities: {} }, has: {} },
+      after: {
+        road_test: { route: { steering_suspension: 0.95, brakes: 0.03, transmission: 0.02 }, sufficient: 0.92, critical: 0.10, priority: { score: 1.5, probabilities: {} }, has: { road_test: 0.96 } },
+      },
+    },
+  },
+  {
+    id: "vague_noise", title: "Garip ses (çok eksik vaka)",
+    vehicle: { family: "Isuzu Novo", fuel: "diesel", km: 301000 },
+    technician_note: "Araçta garip bir ses var, müşteri şikayetçi.",
+    dtc_codes: [], recent_repairs: "", expected: "engine",
+    answers: {
+      sound_video: "Ses motor bölmesinden geliyor; rölantide metalik tıkırtı, devirle artıyor.",
+      dtc_scan: "Aktif kod yok.",
+      fluid_check: "Motor yağı minimumda ve koyu; antifriz normal.",
+      road_test: "Tıkırtı motor devriyle artıyor, araç hızından bağımsız.",
+    },
+    fixture_signals: {
+      initial: { route: { steering_suspension: 0.42, engine: 0.34, transmission: 0.24 }, sufficient: 0.15, critical: 0.08, priority: { score: 1.4, probabilities: {} }, has: {} },
+      after: {
+        sound_video: { route: { engine: 0.76, transmission: 0.16, steering_suspension: 0.08 }, sufficient: 0.52, critical: 0.08, priority: { score: 1.4, probabilities: {} }, has: { sound_video: 0.95 } },
+        fluid_check: { route: { engine: 0.92, transmission: 0.05, steering_suspension: 0.03 }, sufficient: 0.88, critical: 0.08, priority: { score: 1.4, probabilities: {} }, has: { sound_video: 0.95, fluid_check: 0.96 } },
+        dtc_scan: { route: { engine: 0.88, transmission: 0.08, steering_suspension: 0.04 }, sufficient: 0.82, critical: 0.08, priority: { score: 1.4, probabilities: {} }, has: { sound_video: 0.95, dtc_scan: 0.95 } },
+        road_test: { route: { engine: 0.93, transmission: 0.05, steering_suspension: 0.02 }, sufficient: 0.90, critical: 0.08, priority: { score: 1.4, probabilities: {} }, has: { road_test: 0.96 } },
+      },
+    },
+  },
 ];
 
 // ---------- Application State ----------
 const S = {
+  mode: "api", // "api" or "local" (strictly separated; api never silently degrades to local)
   catalog: FALLBACK_CATALOG,
   settings: { ...FALLBACK_CATALOG.default_settings },
   cases: [],
@@ -82,31 +285,36 @@ const S = {
   caseFilter: "all",
   caseSearch: "",
   reviewTab: "queue",
+  wizardStep: 1,
   formDtcs: [],
   formAttachments: [],
   modalAttachment: null,
-  offlineMode: location.hostname.endsWith("github.io") || location.protocol === "file:",
+  userModified: false,
 };
 
-// ---------- Helpers ----------
+// ---------- Helpers & Safety Gates ----------
 const nodeLabel = (id) => (id === "expert_desk" ? "Merkez Uzman Masası (ProEye)" : S.catalog.nodes[id]?.label ?? id);
+
 const depth = (id) => {
   let d = 0;
   let cur = id;
   while ((cur = S.catalog.nodes[cur]?.parent)) d++;
   return d;
 };
+
 const ancestors = (id) => {
   const out = [];
   let cur = id;
   while ((cur = S.catalog.nodes[cur]?.parent)) out.push(cur);
   return out;
 };
+
 const leavesUnder = (node) => {
   const n = S.catalog.nodes[node];
   if (!n) return [node];
   return !n.children?.length ? [node] : n.children.flatMap(leavesUnder);
 };
+
 const hierarchyPath = (id) => {
   if (!id || id === "expert_desk") return "Merkez Teknik Destek › ProEye Masası";
   const chain = [...ancestors(id).reverse(), id].map(nodeLabel);
@@ -123,7 +331,37 @@ function formatTime(iso) {
   }
 }
 
-// Compute UI category for filtering (Screen B: Tümü · İnceleniyor · Kanıt Bekleniyor · Uzman Onayında · Yönlendirildi)
+function isCriticalCase(c, s = S.settings) {
+  if (!c) return false;
+  const tauCrit = s?.tau_crit ?? 0.75;
+  for (const st of c.steps || []) {
+    if (st.decision?.safety_hits?.length) return true;
+    if ((st.signals?.critical ?? 0) >= tauCrit) return true;
+  }
+  const text = [
+    c.technician_note || "",
+    c.initial_measurements || "",
+    c.recent_repairs || "",
+    (c.dtc_codes || []).join(" "),
+    ...(c.evidence || []).map((e) => e.result || ""),
+  ].join(" ").toLowerCase();
+  return SAFETY_RULES.some((r) => text.includes(r));
+}
+
+function validateEvidenceForCase(c, eid, s = S.settings) {
+  const ev = S.catalog.evidence[eid];
+  if (!ev) return `Geçersiz kanıt türü: ${eid}`;
+  const isElectric = c.vehicle?.fuel === "electric";
+  if (ev.requires_ev && !isElectric) {
+    return `Bu kanıt (${ev.label}) yalnızca elektrikli (HV) araçlar için uygulanabilir.`;
+  }
+  if (isCriticalCase(c, s) && (ev.S || 0) > 0) {
+    return `Kritik güvenlik riski bulunan vakalarda saha testi (${ev.label}, S=${ev.S}) uygulanamaz; yalnızca güvenli belge/fotoğraf (S=0) eklenebilir.`;
+  }
+  return null;
+}
+
+// Compute UI status category
 function caseCategory(c) {
   if (c.status === "awaiting_evidence") return "awaiting_evidence";
   if (c.status === "escalated" || c.review_status === "pending_review") return "expert_review";
@@ -136,7 +374,7 @@ function statusBadgeHtml(c) {
   const map = {
     awaiting_evidence: ["badge-awaiting", "Kanıt Bekleniyor"],
     expert_review: ["badge-escalated", "Uzman Onayında"],
-    inspecting: ["badge-inspecting", "İnceleniyor"],
+    inspecting: ["badge-inspecting", "Onay Bekliyor"],
     routed: ["badge-routed", "Yönlendirildi"],
   };
   const [cls, text] = map[cat] || ["badge-neutral", c.status];
@@ -147,7 +385,7 @@ function casePriority(c) {
   const step = c.steps?.at(-1);
   const d = step?.decision;
   const sig = step?.signals;
-  if (c.status === "escalated" || d?.safety_hits?.length || (sig && sig.critical >= S.settings.tau_crit)) {
+  if (isCriticalCase(c) || c.status === "escalated" || d?.safety_hits?.length || (sig && sig.critical >= S.settings.tau_crit)) {
     return { level: "critical", label: "Kritik", rank: 3 };
   }
   const score = sig?.priority?.score ?? 1.5;
@@ -177,14 +415,14 @@ function suggestedTeamInfo(c) {
   return { id: "expert_desk", label: "Merkez Uzman Masası (ProEye)" };
 }
 
-// ---------- Client-Side Deterministic RAEP (for static fallback) ----------
+// ---------- Deterministic Client-Side RAEP Math ----------
 function jsDecide(caseObj, signals, s) {
   const text = [
     caseObj.technician_note || "",
     caseObj.initial_measurements || "",
     caseObj.recent_repairs || "",
     (caseObj.dtc_codes || []).join(" "),
-    ...(caseObj.evidence || []).map((e) => e.result),
+    ...(caseObj.evidence || []).map((e) => e.result || ""),
   ].join(" ").toLowerCase();
 
   const hits = SAFETY_RULES.filter((r) => text.includes(r));
@@ -197,12 +435,17 @@ function jsDecide(caseObj, signals, s) {
     if (action === "ESCALATE") target = "expert_desk";
     return Object.assign(d, { action, reason, target, evidence_id, target_label: target ? nodeLabel(target) : null });
   };
-  if (hits.length) return finish("ESCALATE", `Güvenlik kuralı tetiklendi: ${hits.join(", ")}`);
-  if (!signals) return finish("ESCALATE", "Jev erişilemedi; vaka insan uzmana yönlendirildi.");
+
+  if (hits.length) {
+    return finish("ESCALATE", `Güvenlik kuralı tetiklendi: ${hits.join(", ")}`);
+  }
+  if (!signals) {
+    return finish("ESCALATE", "Jev erişilemedi; vaka insan uzmana yönlendirildi.");
+  }
 
   const leaves = S.catalog.leaves;
-  const total = leaves.reduce((a, l) => a + (signals.route[l] || 0), 0) || 1;
-  const route = Object.fromEntries(leaves.map((l) => [l, (signals.route[l] || 0) / total]));
+  const rawSum = leaves.reduce((a, l) => a + (signals.route[l] || 0), 0) || 1;
+  const route = Object.fromEntries(leaves.map((l) => [l, (signals.route[l] || 0) / rawSum]));
   const nodes = Object.fromEntries(Object.keys(S.catalog.nodes).map((n) => [
     n, Number(leavesUnder(n).reduce((a, l) => a + (route[l] || 0), 0).toFixed(4)),
   ]));
@@ -213,17 +456,24 @@ function jsDecide(caseObj, signals, s) {
   const L = 1 + s.w_crit * pCrit;
 
   const collected = new Set((caseObj.evidence || []).map((e) => e.id));
+  const unavail = new Set(caseObj.unavailable_evidence || []);
   const has = signals.has || {};
-  const electric = caseObj.vehicle?.fuel === "electric";
+  const isElectric = caseObj.vehicle?.fuel === "electric";
   const cands = [];
   const skipped = {};
 
   for (const [eid, ev] of Object.entries(S.catalog.evidence)) {
-    if (collected.has(eid)) skipped[eid] = "toplandı";
-    else if (ev.requires_ev && !electric) skipped[eid] = "araca uygun değil";
-    else if (eid === "dtc_scan" && caseObj.dtc_codes?.length) skipped[eid] = "vakada DTC var";
-    else if ((has[eid] || 0) >= 0.7) skipped[eid] = `notta mevcut (Jev ${Number(has[eid]).toFixed(2)})`;
-    else {
+    if (collected.has(eid)) {
+      skipped[eid] = "toplandı";
+    } else if (unavail.has(eid)) {
+      skipped[eid] = "senaryoda kanıt verisi yok";
+    } else if (ev.requires_ev && !isElectric) {
+      skipped[eid] = "araca uygun değil";
+    } else if (eid === "dtc_scan" && caseObj.dtc_codes?.length) {
+      skipped[eid] = "vakada DTC var";
+    } else if ((has[eid] || 0) >= 0.7) {
+      skipped[eid] = `notta mevcut (Jev ${Number(has[eid]).toFixed(2)})`;
+    } else {
       const pOut = leaves.filter((l) => !ev.informs.includes(l)).map((l) => route[l]);
       const sumOut = pOut.reduce((a, b) => a + b, 0);
       const maxOut = pOut.length ? Math.max(...pOut) : 0;
@@ -267,9 +517,9 @@ function jsDecide(caseObj, signals, s) {
 }
 
 function inferLocalSignals(caseObj) {
-  const txt = `${caseObj.technician_note || ""} ${caseObj.initial_measurements || ""} ${(caseObj.dtc_codes || []).join(" ")} ${(caseObj.evidence || []).map((e) => e.result).join(" ")}`.toLowerCase();
+  const txt = `${caseObj.technician_note || ""} ${caseObj.initial_measurements || ""} ${(caseObj.dtc_codes || []).join(" ")} ${(caseObj.evidence || []).map((e) => e.result || "").join(" ")}`.toLowerCase();
   const route = { engine: 0.05, transmission: 0.05, lv_electrical: 0.08, ecu_comm: 0.08, hv_battery: 0.02, hv_charging: 0.02, hv_inverter: 0.02, brakes: 0.04, steering_suspension: 0.04 };
-  if (/u0100|u0121|can|haberleşme|gösterge|cluster|120Ω/.test(txt)) route.ecu_comm += 0.65;
+  if (/u0100|u0121|can|haberleşme|gösterge|cluster|120ω/.test(txt)) route.ecu_comm += 0.65;
   if (/marş|tık tık|akü|voltaj|p0562|stop|oksit/.test(txt)) route.lv_electrical += 0.65;
   if (/hararet|antifriz|p0217|yağ|motor|radyatör/.test(txt)) route.engine += 0.72;
   if (/şarj|ccs|istasyon|contactor|soket/.test(txt)) route.hv_charging += 0.68;
@@ -294,13 +544,66 @@ function inferLocalSignals(caseObj) {
   };
 }
 
+// Append-only decision state manager
+function applyLocalDecision(caseObj, d, sig, latencyMs, s, recomputed = false) {
+  const ts = new Date().toISOString();
+  caseObj.steps = caseObj.steps || [];
+  caseObj.steps.push({
+    at: ts,
+    latency_ms: latencyMs,
+    signals: sig,
+    decision: d,
+    settings: { ...s },
+    recomputed,
+  });
+
+  const humanLocked = ["confirmed", "approved", "overridden"].includes(caseObj.review_status) && caseObj.final != null;
+
+  if (recomputed && humanLocked) {
+    caseObj.machine_recommendation = {
+      action: d.action,
+      target: d.target,
+      target_label: d.target_label,
+      evidence_id: d.evidence_id,
+      reason: d.reason,
+    };
+    return;
+  }
+
+  const critical = isCriticalCase(caseObj, s);
+  if (critical) {
+    caseObj.status = "escalated";
+    caseObj.review_status = "pending_review";
+    caseObj.final = { action: "ESCALATE", target: "expert_desk", target_label: nodeLabel("expert_desk") };
+    caseObj.pending_evidence = d.action === "REQUEST_EVIDENCE" ? d.evidence_id : null;
+    return;
+  }
+
+  if (d.action === "ROUTE") {
+    caseObj.status = "routed";
+    caseObj.review_status = "pending_confirmation";
+    caseObj.pending_evidence = null;
+    caseObj.final = { action: "ROUTE", target: d.target, target_label: d.target_label };
+  } else if (d.action === "ESCALATE") {
+    caseObj.status = "escalated";
+    caseObj.review_status = "pending_review";
+    caseObj.pending_evidence = null;
+    caseObj.final = { action: "ESCALATE", target: "expert_desk", target_label: nodeLabel("expert_desk") };
+  } else {
+    caseObj.status = "awaiting_evidence";
+    caseObj.review_status = null;
+    caseObj.pending_evidence = d.evidence_id;
+    caseObj.final = null;
+  }
+}
+
 function buildFallbackDemoCases(settings) {
-  const statusMap = { ROUTE: "routed", ESCALATE: "escalated", REQUEST_EVIDENCE: "awaiting_evidence" };
   const svgCan = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='280' viewBox='0 0 480 280'><rect width='480' height='280' fill='%230E141C'/><rect x='24' y='24' width='432' height='232' rx='10' fill='%23141C26' stroke='%23253240'/><text x='44' y='56' fill='%2396A5B5' font-family='monospace' font-size='12'>OBD-II / CAN HATTI TOPOLOJİ GÖRÜNÜMÜ (DEMO)</text><line x1='80' y1='130' x2='400' y2='130' stroke='%2340D9C0' stroke-width='2.5'/><line x1='80' y1='160' x2='400' y2='160' stroke='%2379AFFF' stroke-width='2.5'/><rect x='60' y='110' width='44' height='70' rx='6' fill='%231B2632' stroke='%2340D9C0'/><text x='69' y='149' fill='%23F4F7FA' font-family='monospace' font-size='11'>120Ω</text><rect x='210' y='88' width='76' height='32' rx='5' fill='%231B2632' stroke='%23EAB96B'/><text x='222' y='108' fill='%23EAB96B' font-family='monospace' font-size='11'>ABS ECU</text><rect x='376' y='110' width='44' height='70' rx='6' fill='%231B2632' stroke='%23F17C7C' stroke-dasharray='4 2'/><text x='385' y='149' fill='%23F17C7C' font-family='monospace' font-size='11'>AÇIK</text><text x='44' y='224' fill='%23F4F7FA' font-family='sans-serif' font-size='13'>Gözlem: Gösterge paneli değişimi sonrası X14 konnektör kilidi tam oturmamış.</text></svg>";
   const svgHv = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='280' viewBox='0 0 480 280'><rect width='480' height='280' fill='%230E141C'/><rect x='24' y='24' width='432' height='232' rx='10' fill='%23141C26' stroke='%23253240'/><text x='44' y='56' fill='%2396A5B5' font-family='monospace' font-size='12'>CCS2 HV ŞARJ SOKETİ ÖN İNCELEME (DEMO)</text><circle cx='170' cy='145' r='58' fill='%23090D13' stroke='%23253240' stroke-width='2'/><circle cx='152' cy='168' r='14' fill='%231B2632' stroke='%2340D9C0'/><circle cx='188' cy='168' r='14' fill='%233A1D24' stroke='%23F17C7C' stroke-width='2.5'/><text x='255' y='125' fill='%23F4F7FA' font-family='sans-serif' font-size='13' font-weight='bold'>DC+ Pin 4 Termal İz Şüphesi</text><text x='255' y='150' fill='%2396A5B5' font-family='sans-serif' font-size='12'>Oturum 140. sn'de kontaktör açıyor.</text></svg>";
   const svgRad = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='280' viewBox='0 0 480 280'><rect width='480' height='280' fill='%230E141C'/><rect x='24' y='24' width='432' height='232' rx='10' fill='%23141C26' stroke='%23253240'/><text x='44' y='56' fill='%2396A5B5' font-family='monospace' font-size='12'>SOĞUTMA HATTI KONTROLÜ (DEMO)</text><text x='44' y='130' fill='%23F4F7FA' font-family='sans-serif' font-size='13'>Antifriz seviyesi MIN çizgisinin 3 cm altında</text><text x='44' y='160' fill='%2340D9C0' font-family='monospace' font-size='12'>Yağda emülsiyon yok · Alt kelepçe sızıntısı</text></svg>";
   const svgBat = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='480' height='280' viewBox='0 0 480 280'><rect width='480' height='280' fill='%230E141C'/><rect x='24' y='24' width='432' height='232' rx='10' fill='%23141C26' stroke='%23253240'/><text x='44' y='56' fill='%2396A5B5' font-family='monospace' font-size='12'>24V AKÜ GRUBU GERİLİM TESTİ (DEMO)</text><polyline points='60,110 160,110 185,195 230,190 260,135 410,135' fill='none' stroke='%2340D9C0' stroke-width='3'/><text x='65' y='98' fill='%23F4F7FA' font-family='monospace' font-size='12'>Dinlenme: 21.4V → Marş: 14.8V</text></svg>";
-  const raw = [
+
+  const demos = [
     {
       id: "SP-0001", created_at: "2026-10-28T08:15:00+00:00", updated_at: "2026-10-28T08:16:00+00:00",
       scenario_id: "can_comm", review_status: null,
@@ -308,7 +611,8 @@ function buildFallbackDemoCases(settings) {
       technician_note: "Göstergede seyir halinde aynı anda ABS, şanzıman ve motor arıza uyarı lambaları yandı, birkaç saniye sonra kendiliğinden söndü. Araç çekişinde ve frenlemesinde anlık bir kesinti hissedilmedi.",
       initial_measurements: "Akü dinlenme voltajı 24.6V (normal). Gösterge konnektörü X14 çevresinde kablo demeti gergin duruyor.",
       dtc_codes: ["U0100", "U0121"], recent_repairs: "Geçen ay gösterge paneli modülü (cluster) garantiden değişti.",
-      attachments: [{ name: "citiport-can-topoloji.svg", caption: "Gösterge paneli arkası X14 konnektör ve CAN hattı kontrol şeması", data_url: svgCan }], evidence: [],
+      attachments: [{ name: "citiport-can-topoloji.svg", caption: "Gösterge paneli arkası X14 konnektör ve CAN hattı kontrol şeması", data_url: svgCan }],
+      evidence: [], steps: [],
       signals: { route: { ecu_comm: 0.68, lv_electrical: 0.22, brakes: 0.06, transmission: 0.03, engine: 0.01 }, sufficient: 0.34, critical: 0.12, priority: { score: 1.9, probabilities: {} }, has: { battery_voltage: 0.88, service_history: 0.82, connector_photo: 0.85 } },
       audit: [
         { at: "2026-10-28T08:15:00+00:00", actor: "Teknisyen (İkitelli Servis)", action: "Vaka Oluşturuldu", detail: "U0100 ve U0121 DTC kodları ve ilk voltaj gözlemi ile kayıt açıldı." },
@@ -324,6 +628,7 @@ function buildFallbackDemoCases(settings) {
       dtc_codes: ["P0AA6"], recent_repairs: "2 hafta önce şarj soketi koruma kapağı menteşesi yenilendi.",
       attachments: [{ name: "ccs2-soket-on-inceleme.svg", caption: "CCS2 şarj soketi pin yerleşimi ve termal kontrol noktası", data_url: svgHv }],
       evidence: [{ id: "charging_log", label: "Şarj oturumu hata kaydı", result: "İstasyon kaydı: 'Vehicle-side contactor open'; oturum 140. saniyede sonlandı.", at: "2026-10-28T09:20:00+00:00" }],
+      steps: [],
       signals: { route: { hv_charging: 0.75, hv_battery: 0.14, lv_electrical: 0.07, ecu_comm: 0.04 }, sufficient: 0.48, critical: 0.16, priority: { score: 2.2, probabilities: {} }, has: { charging_log: 0.95 } },
       audit: [
         { at: "2026-10-28T09:05:00+00:00", actor: "Teknisyen (Bornova Servis)", action: "Vaka Oluşturuldu", detail: "Novociti Volt DC şarj kesintisi bildirimiyle açıldı." },
@@ -337,7 +642,7 @@ function buildFallbackDemoCases(settings) {
       technician_note: "Sürücü seyir halindeyken torpido arkasından keskin yanık kokusu geldiğini ve sağ havalandırma menfezinden hafif duman çıktığını bildirdi. Araç güvenlik prosedürü gereği stop edilip akü şalteri kapatıldı.",
       initial_measurements: "Kabin içi sigorta tablası F18-F22 hattında aşırı ısınma izi var; araca enerji verilmedi.",
       dtc_codes: ["B1004"], recent_repairs: "6 ay önce kabin kalorifer fan rezistansı değişti.",
-      attachments: [], evidence: [], signals: null,
+      attachments: [], evidence: [], steps: [], signals: null,
       audit: [
         { at: "2026-10-28T10:12:00+00:00", actor: "Teknisyen (Ankara Servis)", action: "Vaka Oluşturuldu", detail: "Torpido arkası yanık kokusu ve duman bildirimi kaydedildi." },
         { at: "2026-10-28T10:12:02+00:00", actor: "ServicePilot (Safety Gate)", action: "Kritik Eskalasyon", detail: "Deterministik güvenlik kuralı ('yanık kokusu') tetiklendi. Merkez Uzman Masası (ProEye) onayına gönderildi." },
@@ -352,6 +657,7 @@ function buildFallbackDemoCases(settings) {
       dtc_codes: ["P0217"], recent_repairs: "90.000 km periyodik bakımı yetkili serviste yapıldı.",
       attachments: [{ name: "n-wide-sogutma-kontrol.svg", caption: "Genleşme kabı seviye kontrolü ve alt radyatör hortumu sızıntı tespiti", data_url: svgRad }],
       evidence: [{ id: "fluid_check", label: "Yağ / soğutma sıvısı kontrolü", result: "Antifriz minimumun 3 cm altında, motor yağında emülsiyon yok, radyatör alt hortum kelepçesinde sızıntı izi var.", at: "2026-10-28T11:17:00+00:00" }],
+      steps: [],
       signals: { route: { engine: 0.93, transmission: 0.04, ecu_comm: 0.02, lv_electrical: 0.01 }, sufficient: 0.89, critical: 0.15, priority: { score: 2.0, probabilities: {} }, has: { fluid_check: 0.96 } },
       audit: [
         { at: "2026-10-28T11:00:00+00:00", actor: "Teknisyen (Bursa Servis)", action: "Vaka Oluşturuldu", detail: "P0217 hararet uyarısı ve antifriz eksiltme şikayetiyle açıldı." },
@@ -367,6 +673,7 @@ function buildFallbackDemoCases(settings) {
       dtc_codes: ["P0562"], recent_repairs: "Orijinal aküler 36 aydır araç üzerinde.",
       attachments: [{ name: "npr10-aku-voltaj-testi.svg", caption: "24V akü grubu marş anı gerilim düşümü grafiği", data_url: svgBat }],
       evidence: [{ id: "battery_voltage", label: "Akü / şarj voltaj ölçümü", result: "Kontak kapalı 21.4V, marş anında 14.8V'a düşüyor. Akü kutup başları oksitli.", at: "2026-10-28T07:42:00+00:00" }],
+      steps: [],
       signals: { route: { lv_electrical: 0.95, ecu_comm: 0.03, engine: 0.02 }, sufficient: 0.92, critical: 0.04, priority: { score: 1.6, probabilities: {} }, has: { battery_voltage: 0.98 } },
       audit: [
         { at: "2026-10-28T07:30:00+00:00", actor: "Teknisyen (Gebze Servis)", action: "Vaka Oluşturuldu", detail: "NPR 10 marş basmama ve P0562 koduyla açıldı." },
@@ -374,203 +681,415 @@ function buildFallbackDemoCases(settings) {
       ],
     },
   ];
-  return raw.map((r) => {
+
+  return demos.map((r) => {
     const d = jsDecide(r, r.signals, settings);
-    const st = statusMap[d.action];
-    return {
-      ...r,
-      status: st,
-      pending_evidence: d.evidence_id,
-      steps: [{ at: r.updated_at, latency_ms: r.signals ? 380 : 0, signals: r.signals, decision: d }],
-      final: d.action === "REQUEST_EVIDENCE" ? null : { action: d.action, target: d.target, target_label: d.target_label },
-    };
+    applyLocalDecision(r, d, r.signals, r.signals ? 360 : 0, settings, false);
+    return r;
   });
 }
 
-// ---------- API Client with Static Subpath Fallback ----------
+// ---------- Deterministic Offline Replay Simulation (No expected-leak, pure RAEP) ----------
+function runDeterministicReplay(scenarios, catalog, settings) {
+  const leaves = catalog.leaves;
+
+  function replayOne(sc) {
+    const isElectric = sc.vehicle.fuel === "electric";
+    const caseObj = {
+      technician_note: sc.technician_note,
+      vehicle: { ...sc.vehicle },
+      dtc_codes: [...(sc.dtc_codes || [])],
+      recent_repairs: sc.recent_repairs || "",
+      evidence: [],
+      unavailable_evidence: [],
+    };
+
+    const fx = sc.fixture_signals || {};
+    let sig = fx.initial || null;
+    const requested = [];
+    let d = jsDecide(caseObj, sig, settings);
+
+    while (d.action === "REQUEST_EVIDENCE") {
+      const eid = d.evidence_id;
+      if (!eid) break;
+      const ans = sc.answers?.[eid];
+      if (ans == null) {
+        caseObj.unavailable_evidence.push(eid);
+        d = jsDecide(caseObj, sig, settings);
+        continue;
+      }
+      requested.push(eid);
+      caseObj.evidence.push({ id: eid, label: catalog.evidence[eid]?.label || eid, result: ans });
+      const after = fx.after || {};
+      sig = after[eid] || sig;
+      d = jsDecide(caseObj, sig, settings);
+    }
+
+    const cost = requested.reduce((sum, eid) => {
+      const ev = catalog.evidence[eid];
+      return sum + (ev ? settings.alpha * ev.T + settings.beta * ev.E + settings.gamma * ev.S : 0);
+    }, 0);
+
+    const targetLabel = d.target ? nodeLabel(d.target) : (d.action === "ESCALATE" ? "ESCALATE" : null);
+
+    // Baseline B: fixed static checklist
+    const bOrder = isElectric
+      ? ["dtc_scan", "connector_photo", "charging_log", "hv_isolation"]
+      : ["dtc_scan", "connector_photo", "battery_voltage", "fluid_check"];
+    const bReq = [];
+    for (const eid of bOrder) {
+      if (sc.answers?.[eid] != null) bReq.push(eid);
+    }
+    const bCost = bReq.reduce((sum, eid) => {
+      const ev = catalog.evidence[eid];
+      return sum + (ev ? settings.alpha * ev.T + settings.beta * ev.E + settings.gamma * ev.S : 0);
+    }, 0);
+    const lastSig = bReq.length ? (fx.after?.[bReq.at(-1)] || fx.initial) : fx.initial;
+    const bBest = leaves.reduce((a, b) => ((lastSig?.route?.[a] || 0) >= (lastSig?.route?.[b] || 0) ? a : b));
+
+    // Baseline C: initial one-shot argmax without safety gate or evidence requests
+    const initSig = fx.initial || {};
+    const cBest = leaves.reduce((a, b) => ((initSig.route?.[a] || 0) >= (initSig.route?.[b] || 0) ? a : b));
+
+    return {
+      id: sc.id,
+      title: sc.title,
+      expected: sc.expected,
+      expected_label: sc.expected === "ESCALATE" ? "ESCALATE" : nodeLabel(sc.expected),
+      servicepilot: {
+        action: d.action,
+        target: d.target,
+        target_label: targetLabel,
+        requests: requested.length,
+        cost: Number(cost.toFixed(4)),
+        evidence: requested.map((e) => catalog.evidence[e]?.label || e),
+      },
+      baseline_b: {
+        action: "ROUTE",
+        target: bBest,
+        target_label: nodeLabel(bBest),
+        requests: bReq.length,
+        cost: Number(bCost.toFixed(4)),
+      },
+      baseline_c: {
+        action: "ROUTE",
+        target: cBest,
+        target_label: nodeLabel(cBest),
+        requests: 0,
+        cost: 0,
+      },
+    };
+  }
+
+  function computeMetrics(rows, key) {
+    const n = rows.length;
+    let exact = 0;
+    let hier = 0;
+    let autoCount = 0;
+    let wrong = 0;
+    let critTotal = 0;
+    let critCaught = 0;
+    let totalReq = 0;
+    let totalCost = 0;
+
+    for (const r of rows) {
+      const x = r[key];
+      const exp = r.expected;
+      totalReq += x.requests || 0;
+      totalCost += x.cost || 0;
+
+      if (exp === "ESCALATE") {
+        critTotal++;
+        if (x.action === "ESCALATE") {
+          exact++;
+          hier++;
+          critCaught++;
+        } else {
+          wrong++;
+        }
+      } else {
+        if (x.action === "ROUTE") {
+          autoCount++;
+          if (x.target === exp) {
+            exact++;
+            hier++;
+          } else if (ancestors(exp).includes(x.target)) {
+            hier++;
+          } else {
+            wrong++;
+          }
+        }
+      }
+    }
+
+    return {
+      n,
+      exact_acc: Number((exact / n).toFixed(4)),
+      hier_acc: Number((hier / n).toFixed(4)),
+      coverage: Number((autoCount / n).toFixed(4)),
+      wrong_route: wrong,
+      critical_recall: critTotal ? Number((critCaught / critTotal).toFixed(4)) : 1.0,
+      avg_requests: Number((totalReq / n).toFixed(2)),
+      avg_cost: Number((totalCost / n).toFixed(3)),
+    };
+  }
+
+  const rows = scenarios.map(replayOne);
+  return {
+    settings: { ...settings },
+    rows,
+    systems: {
+      servicepilot: computeMetrics(rows, "servicepilot"),
+      baseline_b: computeMetrics(rows, "baseline_b"),
+      baseline_c: computeMetrics(rows, "baseline_c"),
+    },
+  };
+}
+
+// ---------- Local Client-Side API for GitHub Pages / Static Hosting ----------
 async function localApi(path, opts = {}) {
   const method = (opts.method || "GET").toUpperCase();
   const body = opts.body || {};
+
   if (path === "/catalog") return FALLBACK_CATALOG;
   if (path === "/scenarios") return FALLBACK_SCENARIOS;
+
   if (path === "/settings") {
-    if (method === "GET") {
-      try {
-        const saved = localStorage.getItem(LOCAL_SETTINGS_KEY);
-        if (saved) S.settings = { ...FALLBACK_CATALOG.default_settings, ...JSON.parse(saved) };
-      } catch {}
-    } else if (method === "PUT") {
+    if (method === "PUT") {
       S.settings = { ...S.settings, ...body };
-      localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(S.settings));
+      try { localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(S.settings)); } catch {}
     }
     return S.settings;
   }
+
   if (path === "/cases" && method === "GET") {
-    if (!S.cases.length) {
-      try {
-        const saved = localStorage.getItem(LOCAL_CASES_KEY);
-        S.cases = saved ? JSON.parse(saved) : buildFallbackDemoCases(S.settings);
-      } catch {
-        S.cases = buildFallbackDemoCases(S.settings);
-      }
-      localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
-    }
     return S.cases;
   }
+
   if (path === "/cases/seed" || (path === "/cases" && method === "DELETE")) {
     S.cases = buildFallbackDemoCases(S.settings);
-    localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
+    S.userModified = false;
+    try { localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases)); } catch {}
     return S.cases;
   }
+
   if (path === "/cases" && method === "POST") {
     const ts = new Date().toISOString();
     const cid = `SP-${String(S.cases.length + 1).padStart(4, "0")}`;
     const c = {
-      id: cid, created_at: ts, updated_at: ts, status: "awaiting_evidence", review_status: null,
+      id: cid, created_at: ts, updated_at: ts,
       scenario_id: body.scenario_id || null,
-      vehicle: body.vehicle, technician_note: body.technician_note,
+      vehicle: { ...body.vehicle },
+      technician_note: body.technician_note,
       initial_measurements: body.initial_measurements || "",
-      dtc_codes: body.dtc_codes || [], recent_repairs: body.recent_repairs || "",
-      attachments: body.attachments || [], evidence: [], pending_evidence: null, steps: [],
+      dtc_codes: body.dtc_codes || [],
+      recent_repairs: body.recent_repairs || "",
+      attachments: body.attachments || [],
+      evidence: [],
+      pending_evidence: null,
+      steps: [],
       audit: [{ at: ts, actor: `Teknisyen (${body.vehicle?.location || "Servis"})`, action: "Vaka Oluşturuldu", detail: "Servis vakası oluşturuldu." }],
       final: null,
     };
-    const sig = SAFETY_RULES.some((r) => `${c.technician_note} ${c.initial_measurements}`.toLowerCase().includes(r)) ? null : inferLocalSignals(c);
+
+    const sc = S.scenarios.find((x) => x.id === c.scenario_id);
+    const sig = sc?.fixture_signals?.initial || (SAFETY_RULES.some((r) => `${c.technician_note} ${c.initial_measurements}`.toLowerCase().includes(r)) ? null : inferLocalSignals(c));
     const d = jsDecide(c, sig, S.settings);
-    c.steps.push({ at: ts, latency_ms: sig ? 360 : 0, signals: sig, decision: d });
-    c.status = { ROUTE: "routed", ESCALATE: "escalated", REQUEST_EVIDENCE: "awaiting_evidence" }[d.action];
-    c.review_status = d.action === "ESCALATE" ? "pending_review" : d.action === "ROUTE" ? "pending_confirmation" : null;
-    c.pending_evidence = d.evidence_id;
-    c.final = d.action === "REQUEST_EVIDENCE" ? null : { action: d.action, target: d.target, target_label: d.target_label };
+
+    applyLocalDecision(c, d, sig, sig ? 360 : 0, S.settings, false);
     c.audit.push({ at: ts, actor: "ServicePilot (RAEP)", action: d.action, detail: d.reason });
+
     S.cases.unshift(c);
-    localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
+    S.userModified = true;
+    try { localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases)); } catch {}
     return c;
   }
+
   const evMatch = path.match(/^\/cases\/([^/]+)\/evidence$/);
   if (evMatch && method === "POST") {
     const c = S.cases.find((x) => x.id === evMatch[1]);
+    if (!c) throw new Error("Vaka bulunamadı");
+
+    const eid = body.evidence_id;
+    const valErr = validateEvidenceForCase(c, eid, S.settings);
+    if (valErr) throw new Error(valErr);
+
     const ts = new Date().toISOString();
-    const evLabel = S.catalog.evidence[body.evidence_id]?.label || body.evidence_id;
-    if (body.attachment) c.attachments = [...(c.attachments || []), body.attachment];
-    c.evidence.push({ id: body.evidence_id, label: evLabel, result: body.result, at: ts, attachment: body.attachment || null });
+    const evLabel = S.catalog.evidence[eid]?.label || eid;
+
+    if (body.attachment) {
+      c.attachments = [...(c.attachments || []), body.attachment];
+    }
+    c.evidence = [...(c.evidence || []), {
+      id: eid,
+      label: evLabel,
+      result: body.result,
+      at: ts,
+      attachment: body.attachment || null,
+    }];
     c.audit.push({ at: ts, actor: "Teknisyen", action: `Kanıt Eklendi: ${evLabel}`, detail: body.result });
-    const sig = inferLocalSignals(c);
+
+    const sc = S.scenarios.find((x) => x.id === c.scenario_id);
+    const sig = sc?.fixture_signals?.after?.[eid] || inferLocalSignals(c);
     const d = jsDecide(c, sig, S.settings);
-    c.steps.push({ at: ts, latency_ms: 340, signals: sig, decision: d });
-    c.status = { ROUTE: "routed", ESCALATE: "escalated", REQUEST_EVIDENCE: "awaiting_evidence" }[d.action];
-    c.review_status = d.action === "ESCALATE" ? "pending_review" : d.action === "ROUTE" ? "pending_confirmation" : null;
-    c.pending_evidence = d.evidence_id;
-    c.final = d.action === "REQUEST_EVIDENCE" ? null : { action: d.action, target: d.target, target_label: d.target_label };
+
+    applyLocalDecision(c, d, sig, 340, S.settings, false);
     c.updated_at = ts;
     c.audit.push({ at: ts, actor: "ServicePilot (RAEP)", action: d.action, detail: d.reason });
-    localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
+
+    S.userModified = true;
+    try { localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases)); } catch {}
     return c;
   }
+
   const revMatch = path.match(/^\/cases\/([^/]+)\/review$/);
   if (revMatch && method === "POST") {
     const c = S.cases.find((x) => x.id === revMatch[1]);
+    if (!c) throw new Error("Vaka bulunamadı");
     const ts = new Date().toISOString();
-    const lastDec = c.steps.at(-1)?.decision || {};
-    const tgt = body.target || lastDec.target || lastDec.baseline_one_shot || "lv_electrical";
-    if (body.action === "confirm_route" || body.action === "approve") {
+    const lastStep = c.steps?.at(-1) || {};
+    const lastDec = lastStep.decision || {};
+
+    if (body.action === "confirm_route") {
+      if (c.status === "awaiting_evidence") {
+        throw new Error("Eksik kanıt tamamlanmadan yönlendirme onaylanamaz. Önce kanıt ekleyin veya gerekçeli eskalasyon yapın.");
+      }
+      if (isCriticalCase(c, S.settings) || c.status === "escalated") {
+        throw new Error("Kritik veya uzman incelemesindeki vaka sıradan onay ile kapatılamaz; uzman onayı (approve) veya override gereklidir.");
+      }
+      const tgt = body.target || lastDec.target;
+      if (!tgt || !S.catalog.nodes[tgt]) {
+        throw new Error("Geçerli bir hedef uzmanlık düğümü bulunamadı.");
+      }
       c.status = "routed";
-      c.review_status = body.action === "approve" ? "approved" : "confirmed";
+      c.review_status = "confirmed";
       c.pending_evidence = null;
       c.final = { action: "ROUTE", target: tgt, target_label: nodeLabel(tgt) };
-      c.audit.push({ at: ts, actor: body.action === "approve" ? "Merkez Uzman" : "Servis Sorumlusu", action: "Yönlendirme Onaylandı", detail: body.reason || `Vaka '${nodeLabel(tgt)}' ekibine yönlendirildi.` });
+      c.audit.push({ at: ts, actor: "Servis Sorumlusu", action: "Yönlendirme Onaylandı", detail: body.reason || `Vaka '${nodeLabel(tgt)}' ekibine yönlendirildi.` });
+    } else if (body.action === "approve") {
+      let tgt = body.target || lastDec.target;
+      if (!tgt || tgt === "expert_desk" || !S.catalog.nodes[tgt]) {
+        throw new Error("Kritik veya uzman masasına eskale edilmiş vakalarda onay için hedef uzman ekibin açıkça seçilmesi ve gerekçe girilmesi zorunludur.");
+      }
+      c.status = "routed";
+      c.review_status = "approved";
+      c.pending_evidence = null;
+      c.final = { action: "ROUTE", target: tgt, target_label: nodeLabel(tgt) };
+      c.audit.push({ at: ts, actor: "Merkez Uzman (ProEye)", action: "Uzman Onayı Verildi", detail: body.reason || `Uzman incelemesi tamamlandı; hedef: ${nodeLabel(tgt)}.` });
     } else if (body.action === "override") {
+      const tgt = body.target;
+      if (!tgt || !S.catalog.nodes[tgt]) {
+        throw new Error("Yönlendirme değişikliği için geçerli bir uzmanlık düğümü seçilmelidir.");
+      }
+      if (!body.reason || body.reason.trim().length < 3) {
+        throw new Error("Yönlendirme değişikliği (override) için en az 3 karakterlik gerekçe yazılması zorunludur.");
+      }
       c.status = "routed";
       c.review_status = "overridden";
       c.pending_evidence = null;
       c.final = { action: "ROUTE", target: tgt, target_label: nodeLabel(tgt) };
-      c.audit.push({ at: ts, actor: "Merkez Uzman", action: `Yönlendirme Değiştirildi → ${nodeLabel(tgt)}`, detail: `Gerekçe: ${body.reason}` });
+      c.audit.push({ at: ts, actor: "Merkez Uzman (ProEye)", action: `Yönlendirme Değiştirildi → ${nodeLabel(tgt)}`, detail: `Gerekçe: ${body.reason.trim()}` });
     } else if (body.action === "escalate") {
       c.status = "escalated";
       c.review_status = "pending_review";
       c.pending_evidence = null;
       c.final = { action: "ESCALATE", target: "expert_desk", target_label: nodeLabel("expert_desk") };
-      c.audit.push({ at: ts, actor: "Servis Sorumlusu", action: "Uzman İncelemesine Gönderildi", detail: body.reason || "ProEye masasına aktarıldı." });
+      c.audit.push({ at: ts, actor: "Servis Sorumlusu", action: "Uzman İncelemesine Gönderildi", detail: body.reason || "Vaka Merkez Uzman Masası (ProEye) kuyruğuna aktarıldı." });
     } else if (body.action === "request_evidence") {
       const eid = body.evidence_id || lastDec.evidence_id || lastDec.candidates?.[0]?.id || "connector_photo";
-      c.status = "awaiting_evidence";
-      c.review_status = null;
-      c.pending_evidence = eid;
-      c.final = null;
-      c.audit.push({ at: ts, actor: "Servis Sorumlusu", action: `Ek Kanıt İstendi: ${S.catalog.evidence[eid]?.label}`, detail: body.reason || "Teknisyenden ek kanıt talep edildi." });
+      const valErr = validateEvidenceForCase(c, eid, S.settings);
+      if (valErr) throw new Error(valErr);
+      const evLabel = S.catalog.evidence[eid]?.label || eid;
+      if (isCriticalCase(c, S.settings)) {
+        c.status = "escalated";
+        c.review_status = "pending_review";
+        c.final = { action: "ESCALATE", target: "expert_desk", target_label: nodeLabel("expert_desk") };
+        c.pending_evidence = eid;
+      } else {
+        c.status = "awaiting_evidence";
+        c.review_status = null;
+        c.pending_evidence = eid;
+        c.final = null;
+      }
+      c.audit.push({ at: ts, actor: "Servis Sorumlusu", action: "Kanıt Talebi Kaydedildi", detail: `${evLabel} talep edildi. ${body.reason || ""}`.trim() });
+    } else {
+      throw new Error(`Bilinmeyen aksiyon: ${body.action}`);
     }
+
     c.updated_at = ts;
-    localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
+    S.userModified = true;
+    try { localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases)); } catch {}
     return c;
   }
+
   const recMatch = path.match(/^\/cases\/([^/]+)\/recompute$/);
   if (recMatch && method === "POST") {
     const c = S.cases.find((x) => x.id === recMatch[1]);
-    const last = c.steps.pop();
-    const d = jsDecide(c, last.signals, S.settings);
-    c.steps.push({ at: new Date().toISOString(), latency_ms: last.latency_ms, signals: last.signals, decision: d, recomputed: true });
-    c.status = { ROUTE: "routed", ESCALATE: "escalated", REQUEST_EVIDENCE: "awaiting_evidence" }[d.action];
-    c.pending_evidence = d.evidence_id;
-    c.final = d.action === "REQUEST_EVIDENCE" ? null : { action: d.action, target: d.target, target_label: d.target_label };
-    localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases));
+    if (!c) throw new Error("Vaka bulunamadı");
+    const lastStep = c.steps?.at(-1) || {};
+    const d = jsDecide(c, lastStep.signals, S.settings);
+    applyLocalDecision(c, d, lastStep.signals, lastStep.latency_ms || 0, S.settings, true);
+    c.updated_at = new Date().toISOString();
+    c.audit.push({ at: c.updated_at, actor: "ServicePilot (RAEP)", action: "Yeniden Hesaplandı", detail: `Politika parametreleri güncellendi (${d.action}).` });
+    S.userModified = true;
+    try { localStorage.setItem(LOCAL_CASES_KEY, JSON.stringify(S.cases)); } catch {}
     return c;
   }
+
   if (path === "/replay" && method === "POST") {
-    const rows = S.scenarios.map((sc) => {
-      const expLbl = sc.expected === "ESCALATE" ? "ESCALATE" : nodeLabel(sc.expected);
-      const isCrit = sc.expected === "ESCALATE";
-      return {
-        id: sc.id, title: sc.title, expected: sc.expected, expected_label: expLbl,
-        servicepilot: { action: isCrit ? "ESCALATE" : "ROUTE", target: isCrit ? "expert_desk" : sc.expected, target_label: expLbl, requests: isCrit ? 0 : Object.keys(sc.answers || {}).length ? 1 : 0, cost: isCrit ? 0 : 0.12, evidence: Object.keys(sc.answers || {}).slice(0, 1).map((k) => S.catalog.evidence[k]?.label || k) },
-        baseline_b: { action: "ROUTE", target: isCrit ? "lv_electrical" : sc.expected, target_label: isCrit ? nodeLabel("lv_electrical") : expLbl, requests: isCrit ? 2 : 3, cost: 0.42 },
-        baseline_c: { action: "ROUTE", target: isCrit ? "lv_electrical" : sc.expected, target_label: isCrit ? nodeLabel("lv_electrical") : expLbl, requests: 0, cost: 0 },
-      };
-    });
-    return {
-      settings: S.settings, rows,
-      systems: {
-        servicepilot: { n: rows.length, exact_acc: 0.92, hier_acc: 1.0, coverage: 0.85, wrong_route: 0, critical_recall: 1.0, avg_requests: 0.85, avg_cost: 0.11 },
-        baseline_b: { n: rows.length, exact_acc: 0.77, hier_acc: 0.85, coverage: 1.0, wrong_route: 2, critical_recall: 0.0, avg_requests: 2.85, avg_cost: 0.41 },
-        baseline_c: { n: rows.length, exact_acc: 0.69, hier_acc: 0.77, coverage: 1.0, wrong_route: 3, critical_recall: 0.0, avg_requests: 0.0, avg_cost: 0.0 },
-      },
-    };
+    return runDeterministicReplay(S.scenarios, S.catalog, S.settings);
   }
+
   return {};
 }
 
+// Strict API Client: In "api" mode, failed writes NEVER silently fall back to local storage
 async function api(path, opts = {}) {
-  if (S.offlineMode) return localApi(path, opts);
-  try {
-    const res = await fetch(`/api${path}`, {
-      ...opts,
-      headers: { "Content-Type": "application/json" },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
-    const contentType = res.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      throw new Error("STATIC_HOST_FALLBACK");
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? res.status));
-    }
-    return data;
-  } catch (err) {
-    if (err.message === "STATIC_HOST_FALLBACK" || err instanceof TypeError) {
-      S.offlineMode = true;
-      return localApi(path, opts);
-    }
-    throw err;
+  if (S.mode === "local") {
+    return localApi(path, opts);
   }
+
+  const res = await fetch(`/api${path}`, {
+    ...opts,
+    headers: { "Content-Type": "application/json" },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`Sunucu beklenmeyen bir yanıt döndürdü (HTTP ${res.status}).`);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? res.status);
+    throw new Error(msg);
+  }
+  return data;
 }
 
 // ---------- UI Utilities ----------
+function showApiError(msg) {
+  const banner = $("#api-error-banner");
+  const text = $("#api-error-text");
+  if (banner && text) {
+    text.textContent = msg;
+    banner.hidden = false;
+  }
+}
+
+function hideApiError() {
+  const banner = $("#api-error-banner");
+  if (banner) banner.hidden = true;
+}
+
 function toast(msg) {
   const t = $("#toast");
+  if (!t) return;
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove("show"), 3000);
+  toast.t = setTimeout(() => t.classList.remove("show"), 3200);
 }
 
 async function busy(btn, label, fn) {
@@ -579,9 +1098,11 @@ async function busy(btn, label, fn) {
   btn.disabled = true;
   btn.innerHTML = `<span class="spinner" aria-hidden="true"></span> <span>${esc(label)}</span>`;
   try {
+    hideApiError();
     return await fn();
   } catch (e) {
-    toast(`Hata: ${e.message}`);
+    showApiError(`Hata: ${e.message}`);
+    toast(`İşlem başarısız: ${e.message}`);
   } finally {
     btn.disabled = false;
     btn.innerHTML = old;
@@ -593,16 +1114,38 @@ function upsertCase(c) {
   if (i >= 0) S.cases[i] = c;
   else S.cases.unshift(c);
   S.selected = c.id;
-  renderAll();
+  updateNavCounts();
+  if (location.hash.startsWith("#cases/") || location.hash === "#cases") {
+    renderCaseDetail();
+  } else if (location.hash === "#review") {
+    renderExpertReview();
+  } else {
+    renderOverview();
+  }
 }
 
-// ---------- Navigation & Sidebar Counts ----------
 function updateNavCounts() {
   const total = S.cases.length;
   const reviewCount = S.cases.filter((c) => caseCategory(c) === "expert_review" || caseCategory(c) === "inspecting").length;
-  $("#nav-cases-count").textContent = total;
-  $("#nav-review-count").textContent = reviewCount;
-  $("#tab-review-count").textContent = reviewCount;
+  const c1 = $("#nav-cases-count");
+  const c2 = $("#nav-review-count");
+  const c3 = $("#tab-review-count");
+  if (c1) c1.textContent = total;
+  if (c2) c2.textContent = reviewCount;
+  if (c3) c3.textContent = reviewCount;
+
+  // Environment pill
+  const envLabel = $("#env-label");
+  const envDot = $("#env-dot");
+  if (envLabel && envDot) {
+    if (S.mode === "api") {
+      envLabel.textContent = "Canlı API";
+      envDot.style.background = "var(--accent)";
+    } else {
+      envLabel.textContent = "Demo Ortamı (Statik)";
+      envDot.style.background = "var(--warning)";
+    }
+  }
 }
 
 // ---------- SCREEN A: Genel Bakış (Overview) ----------
@@ -617,13 +1160,13 @@ function renderOverview() {
     {
       label: "Açık Vakalar",
       value: openCases,
-      foot: `Toplam ${cases.length} kayıtlı vaka`,
+      foot: `Toplam ${cases.length} kayıtlı servis vakası`,
       action: () => { S.caseFilter = "all"; location.hash = "#cases"; },
     },
     {
       label: "Kanıt Bekleyen",
       value: awaiting,
-      foot: "Teknisyen ölçüm / fotoğraf girişi bekliyor",
+      foot: "Teknisyen ölçüm veya görsel girişi bekliyor",
       action: () => { S.caseFilter = "awaiting_evidence"; location.hash = "#cases"; },
     },
     {
@@ -635,114 +1178,130 @@ function renderOverview() {
     {
       label: "Yönlendirilmiş",
       value: routed,
-      foot: "Uzman ekibe devri tamamlanan vakalar",
+      foot: "Uzman ekibe devri onaylanan vakalar",
       action: () => { S.caseFilter = "routed"; location.hash = "#cases"; },
     },
   ];
 
   const kpiEl = $("#overview-kpis");
-  kpiEl.innerHTML = kpis.map((k, idx) => `
-    <article class="kpi-card" data-kpi-idx="${idx}" tabindex="0" role="button" aria-label="${esc(k.label)}: ${k.value}">
-      <div class="kpi-top">
-        <span>${esc(k.label)}</span>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </div>
-      <div class="kpi-value">${k.value}</div>
-      <div class="kpi-foot">${esc(k.foot)}</div>
-    </article>
-  `).join("");
+  if (kpiEl) {
+    kpiEl.innerHTML = kpis.map((k, idx) => `
+      <article class="kpi-card" data-kpi-idx="${idx}" tabindex="0" role="button" aria-label="${esc(k.label)}: ${k.value}">
+        <div class="kpi-top">
+          <span>${esc(k.label)}</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </div>
+        <div class="kpi-value">${k.value}</div>
+        <div class="kpi-foot">${esc(k.foot)}</div>
+      </article>
+    `).join("");
 
-  $$(".kpi-card", kpiEl).forEach((el) => {
-    const idx = Number(el.dataset.kpiIdx);
-    el.onclick = kpis[idx].action;
-    el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); kpis[idx].action(); } };
-  });
-
-  // Öncelikli Vakalar
-  const prioListEl = $("#priority-cases-list");
-  if (!cases.length) {
-    prioListEl.innerHTML = `
-      <div class="empty-state">
-        <h3>Henüz aktif servis vakası bulunmuyor</h3>
-        <p>Yeni bir servis vakası oluşturarak veya temsili demo verisini yükleyerek triyaj akışını başlatabilirsiniz.</p>
-        <a href="#new" class="btn btn-primary btn-sm">+ Yeni Vaka Oluştur</a>
-      </div>`;
-  } else {
-    const sorted = [...cases].sort((a, b) => {
-      const catOrder = { expert_review: 4, awaiting_evidence: 3, inspecting: 2, routed: 1 };
-      return (catOrder[caseCategory(b)] - catOrder[caseCategory(a)]) || (casePriority(b).rank - casePriority(a).rank);
+    $$(".kpi-card", kpiEl).forEach((el) => {
+      const idx = Number(el.dataset.kpiIdx);
+      el.onclick = kpis[idx].action;
+      el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); kpis[idx].action(); } };
     });
-
-    prioListEl.innerHTML = sorted.map((c) => {
-      const cat = caseCategory(c);
-      const borderCls = cat === "expert_review" ? "is-critical" : cat === "awaiting_evidence" ? "is-awaiting" : "is-ready";
-      const team = suggestedTeamInfo(c);
-      const evReq = c.pending_evidence ? S.catalog.evidence[c.pending_evidence]?.label : null;
-      return `
-        <article class="priority-case-card ${borderCls}" data-open-case="${esc(c.id)}" tabindex="0" role="button" aria-label="${esc(c.id)} ${esc(c.vehicle.family)} vakasını aç">
-          <div class="p-case-left">
-            <div class="p-case-top">
-              <span class="p-case-id">${esc(c.id)}</span>
-              <span class="p-case-vehicle">${esc(c.vehicle.family)}</span>
-              ${priorityBadgeHtml(c)}
-              ${statusBadgeHtml(c)}
-            </div>
-            <p class="p-case-summary">${esc(c.technician_note)}</p>
-            <div class="p-case-meta">
-              <span>Önerilen / Atanan Ekip: <strong>${esc(team.label)}</strong></span>
-              ${evReq ? `<span>Eksik Kanıt: <strong>${esc(evReq)}</strong></span>` : ""}
-              ${c.dtc_codes?.length ? `<span class="mono">DTC: ${esc(c.dtc_codes.join(", "))}</span>` : ""}
-              <span>Güncelleme: ${esc(formatTime(c.updated_at || c.created_at))}</span>
-            </div>
-          </div>
-          <div class="p-case-right">
-            <span class="btn btn-secondary btn-sm">Vakayı Aç →</span>
-          </div>
-        </article>
-      `;
-    }).join("");
   }
 
-  // Son Aktiviteler
-  const feedEl = $("#recent-activity-list");
-  const allAudit = cases.flatMap((c) => (c.audit || []).map((a) => ({ ...a, caseId: c.id, family: c.vehicle.family })))
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-    .slice(0, 6);
+  // Priority Cases List
+  const prioListEl = $("#priority-cases-list");
+  if (prioListEl) {
+    if (!cases.length) {
+      prioListEl.innerHTML = `
+        <div class="empty-state">
+          <h3>Henüz aktif servis vakası bulunmuyor</h3>
+          <p>Yeni bir servis vakası oluşturarak veya temsili demo verisini yükleyerek triyaj akışını başlatabilirsiniz.</p>
+          <a href="#new" class="btn btn-primary btn-sm">+ Yeni Vaka Oluştur</a>
+        </div>`;
+    } else {
+      const sorted = [...cases].sort((a, b) => {
+        const catOrder = { expert_review: 4, awaiting_evidence: 3, inspecting: 2, routed: 1 };
+        return (catOrder[caseCategory(b)] - catOrder[caseCategory(a)]) || (casePriority(b).rank - casePriority(a).rank);
+      });
 
-  if (!allAudit.length) {
-    feedEl.innerHTML = `<li class="text-secondary">Henüz kayıtlı aktivite yok.</li>`;
-  } else {
-    feedEl.innerHTML = allAudit.map((a) => {
-      const isCrit = /Eskalasyon|Safety|Kritik/i.test(a.action);
-      const isWarn = /Kanıt İstendi|Görsel/i.test(a.action);
-      return `
-        <li class="activity-item">
-          <span class="activity-dot ${isCrit ? "crit" : isWarn ? "warn" : ""}" aria-hidden="true"></span>
-          <div class="activity-body">
-            <a href="#cases/${esc(a.caseId)}" class="activity-title">
-              <span class="mono">${esc(a.caseId)}</span> · ${esc(a.action)}
-            </a>
-            <span class="activity-detail">${esc(a.detail)}</span>
-            <span class="activity-time">${esc(a.actor)} · ${esc(formatTime(a.at))}</span>
-          </div>
-        </li>
-      `;
-    }).join("");
+      prioListEl.innerHTML = sorted.map((c) => {
+        const cat = caseCategory(c);
+        const borderCls = cat === "expert_review" ? "is-critical" : cat === "awaiting_evidence" ? "is-awaiting" : "is-ready";
+        const team = suggestedTeamInfo(c);
+        const evReq = c.pending_evidence ? S.catalog.evidence[c.pending_evidence]?.label : null;
+        return `
+          <article class="priority-case-card ${borderCls}" data-open-case="${esc(c.id)}" tabindex="0" role="button" aria-label="${esc(c.id)} ${esc(c.vehicle.family)} vakasını aç">
+            <div class="p-case-left">
+              <div class="p-case-top">
+                <span class="p-case-id">${esc(c.id)}</span>
+                <span class="p-case-vehicle">${esc(c.vehicle.family)}</span>
+                ${priorityBadgeHtml(c)}
+                ${statusBadgeHtml(c)}
+              </div>
+              <p class="p-case-summary">${esc(c.technician_note)}</p>
+              <div class="p-case-meta">
+                <span>Önerilen / Atanan Ekip: <strong>${esc(team.label)}</strong></span>
+                ${evReq ? `<span>Eksik Kanıt: <strong>${esc(evReq)}</strong></span>` : ""}
+                ${c.dtc_codes?.length ? `<span class="mono">DTC: ${esc(c.dtc_codes.join(", "))}</span>` : ""}
+                <span>Güncelleme: ${esc(formatTime(c.updated_at || c.created_at))}</span>
+              </div>
+            </div>
+            <div class="p-case-right">
+              <span class="btn btn-secondary btn-sm">Vakayı Aç →</span>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      $$(".priority-case-card", prioListEl).forEach((card) => {
+        card.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            location.hash = `#cases/${card.dataset.openCase}`;
+          }
+        };
+      });
+    }
+  }
+
+  // Recent Activity Feed
+  const feedEl = $("#recent-activity-list");
+  if (feedEl) {
+    const allAudit = cases.flatMap((c) => (c.audit || []).map((a) => ({ ...a, caseId: c.id, family: c.vehicle.family })))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+      .slice(0, 6);
+
+    if (!allAudit.length) {
+      feedEl.innerHTML = `<li class="text-secondary">Henüz kayıtlı aktivite yok.</li>`;
+    } else {
+      feedEl.innerHTML = allAudit.map((a) => {
+        const isCrit = /Eskalasyon|Safety|Kritik/i.test(a.action);
+        const isWarn = /Kanıt/i.test(a.action);
+        return `
+          <li class="activity-item">
+            <span class="activity-dot ${isCrit ? "crit" : isWarn ? "warn" : ""}" aria-hidden="true"></span>
+            <div class="activity-body">
+              <a href="#cases/${esc(a.caseId)}" class="activity-title">
+                <span class="mono">${esc(a.caseId)}</span> · ${esc(a.action)}
+              </a>
+              <span class="activity-detail">${esc(a.detail)}</span>
+              <span class="activity-time">${esc(a.actor)} · ${esc(formatTime(a.at))}</span>
+            </div>
+          </li>
+        `;
+      }).join("");
+    }
   }
 
   // System Posture Card
-  const stepsWithSig = cases.flatMap((x) => x.steps || []).filter((s) => s.signals && s.latency_ms);
-  const avgLat = stepsWithSig.length ? Math.round(stepsWithSig.reduce((a, s) => a + s.latency_ms, 0) / stepsWithSig.length) : null;
-  $("#system-posture-card").innerHTML = `
-    <div class="section-header" style="margin-bottom:4px">
-      <h3>Karar Katmanı Parametreleri (RAEP)</h3>
-      <a href="#policy" class="btn-subtle btn-xs">Ayarlar</a>
-    </div>
-    <div class="posture-row"><span>Yönlendirme Eşiği (τ_route)</span><strong>${num(S.settings.tau_route, 2)}</strong></div>
-    <div class="posture-row"><span>Kanıt Yeterlilik Eşiği (τ_suff)</span><strong>${num(S.settings.tau_suff, 2)}</strong></div>
-    <div class="posture-row"><span>Kritik Eskalasyon Eşiği (τ_crit)</span><strong>${num(S.settings.tau_crit, 2)}</strong></div>
-    <div class="posture-row"><span>Ortalama Jev Yanıt Süresi</span><strong>${avgLat ? `${avgLat} ms` : "Demo Sinyali"}</strong></div>
-  `;
+  const postureEl = $("#system-posture-card");
+  if (postureEl) {
+    postureEl.innerHTML = `
+      <div class="section-header" style="margin-bottom:4px">
+        <h3>Karar Katmanı Parametreleri (RAEP)</h3>
+        <a href="#policy" class="btn-subtle btn-xs">Ayarlar</a>
+      </div>
+      <div class="posture-row"><span>Yönlendirme Eşiği (τ_route)</span><strong>${num(S.settings.tau_route, 2)}</strong></div>
+      <div class="posture-row"><span>Kanıt Yeterlilik Eşiği (τ_suff)</span><strong>${num(S.settings.tau_suff, 2)}</strong></div>
+      <div class="posture-row"><span>Kritik Eskalasyon Eşiği (τ_crit)</span><strong>${num(S.settings.tau_crit, 2)}</strong></div>
+      <div class="posture-row"><span>Çalışma Modu</span><strong>${S.mode === "api" ? "FastAPI Sunucusu" : "Statik Yerel Motor"}</strong></div>
+    `;
+  }
 }
 
 // ---------- SCREEN B: Vakalar (Cases Workspace) ----------
@@ -757,7 +1316,7 @@ function renderCasesScreen() {
 
   const labels = {
     all: "Tümü",
-    inspecting: "İnceleniyor",
+    inspecting: "Onay Bekliyor",
     awaiting_evidence: "Kanıt Bekleniyor",
     expert_review: "Uzman Onayında",
     routed: "Yönlendirildi",
@@ -780,6 +1339,8 @@ function renderCasesScreen() {
   });
 
   const container = $("#cases-table-container");
+  if (!container) return;
+
   if (!filtered.length) {
     container.innerHTML = `
       <div class="empty-state">
@@ -793,7 +1354,8 @@ function renderCasesScreen() {
     $("#clear-case-filters-btn")?.addEventListener("click", () => {
       S.caseFilter = "all";
       S.caseSearch = "";
-      $("#cases-search-input").value = "";
+      const input = $("#cases-search-input");
+      if (input) input.value = "";
       renderCasesScreen();
     });
     return;
@@ -850,11 +1412,126 @@ function renderCasesScreen() {
       </table>
     </div>
   `;
+
+  $$(".cases-table tbody tr", container).forEach((tr) => {
+    tr.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        location.hash = `#cases/${tr.dataset.openCase}`;
+      }
+    };
+  });
 }
 
-// ---------- SCREEN C: Yeni Vaka (New Case Submission) ----------
+// ---------- SCREEN C: Yeni Vaka (3-Step Wizard) ----------
+function setWizardStep(step) {
+  S.wizardStep = Math.max(1, Math.min(3, step));
+
+  $$(".wizard-stepper .step-tab").forEach((tab) => {
+    const s = Number(tab.dataset.stepTarget);
+    tab.classList.toggle("active", s === S.wizardStep);
+    tab.classList.toggle("completed", s < S.wizardStep);
+    if (s === S.wizardStep) tab.setAttribute("aria-current", "step");
+    else tab.removeAttribute("aria-current");
+  });
+
+  const s1 = $("#form-step-1");
+  const s2 = $("#form-step-2");
+  const s3 = $("#form-step-3");
+  if (s1) s1.hidden = S.wizardStep !== 1;
+  if (s2) s2.hidden = S.wizardStep !== 2;
+  if (s3) s3.hidden = S.wizardStep !== 3;
+
+  if (S.wizardStep === 3) {
+    renderWizardSummary();
+  }
+
+  // Scroll to active section heading
+  const targetHeader = $(`#sec-${S.wizardStep === 1 ? "vehicle" : S.wizardStep === 2 ? "problem" : "evidence"}-h`);
+  targetHeader?.focus();
+}
+
+function validateWizardStep(step) {
+  const f = $("#case-form");
+  if (!f) return false;
+
+  if (step === 1) {
+    const family = f.elements.family.value.trim();
+    const kmStr = f.elements.km.value.trim();
+    const errFam = $("#err-family");
+    const errKm = $("#err-km");
+    let ok = true;
+
+    if (errFam) errFam.textContent = "";
+    if (errKm) errKm.textContent = "";
+
+    if (!family || family.length < 2) {
+      if (errFam) errFam.textContent = "Lütfen geçerli bir araç modeli girin (en az 2 karakter).";
+      f.elements.family.setAttribute("aria-invalid", "true");
+      f.elements.family.focus();
+      ok = false;
+    } else {
+      f.elements.family.removeAttribute("aria-invalid");
+    }
+
+    const kmNum = Number(kmStr);
+    if (!kmStr || Number.isNaN(kmNum) || kmNum < 0 || kmNum > 5000000) {
+      if (errKm) errKm.textContent = "Kilometre 0 ile 5.000.000 arasında geçerli bir sayı olmalıdır.";
+      f.elements.km.setAttribute("aria-invalid", "true");
+      if (ok) f.elements.km.focus();
+      ok = false;
+    } else {
+      f.elements.km.removeAttribute("aria-invalid");
+    }
+    return ok;
+  }
+
+  if (step === 2) {
+    addDtcFromInput();
+    const note = f.elements.note.value.trim();
+    const errNote = $("#err-note");
+    if (errNote) errNote.textContent = "";
+
+    if (!note || note.length < 5) {
+      if (errNote) errNote.textContent = "Arıza açıklaması en az 5 karakter olmalıdır.";
+      f.elements.note.setAttribute("aria-invalid", "true");
+      f.elements.note.focus();
+      return false;
+    }
+    f.elements.note.removeAttribute("aria-invalid");
+    return true;
+  }
+
+  return true;
+}
+
+function renderWizardSummary() {
+  const f = $("#case-form");
+  const el = $("#form-review-summary");
+  if (!f || !el) return;
+
+  const family = f.elements.family.value.trim() || "—";
+  const km = f.elements.km.value.trim() ? `${Number(f.elements.km.value).toLocaleString("tr-TR")} km` : "—";
+  const fuel = f.elements.fuel?.value === "electric" ? "Elektrik (HV)" : "Dizel (ICE)";
+  const note = f.elements.note.value.trim() || "—";
+  const dtcText = S.formDtcs.length ? S.formDtcs.join(", ") : "Belirtilmedi";
+  const attCount = `${S.formAttachments.length} dosya yüklendi`;
+
+  el.innerHTML = `
+    <div><span class="text-secondary">Araç:</span> <strong>${esc(family)} (${fuel})</strong></div>
+    <div><span class="text-secondary">Kilometre:</span> <strong class="mono">${esc(km)}</strong></div>
+    <div><span class="text-secondary">DTC Kodları:</span> <strong class="mono">${esc(dtcText)}</strong></div>
+    <div><span class="text-secondary">Görsel Kanıt:</span> <strong>${esc(attCount)}</strong></div>
+    <div style="grid-column:1/-1;border-top:1px solid var(--border-subtle);padding-top:6px">
+      <span class="text-secondary">Şikayet Özeti:</span>
+      <p style="margin-top:2px;font-size:0.85rem">${esc(note.slice(0, 140))}${note.length > 140 ? "…" : ""}</p>
+    </div>
+  `;
+}
+
 function renderFormDtcChips() {
   const el = $("#dtc-chips");
+  if (!el) return;
   if (!S.formDtcs.length) {
     el.innerHTML = `<span class="field-hint">Henüz DTC kodu eklenmedi.</span>`;
     return;
@@ -869,6 +1546,7 @@ function renderFormDtcChips() {
 
 function addDtcFromInput() {
   const input = $("#dtc-input");
+  if (!input) return;
   const parts = input.value.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
   for (const p of parts) {
     if (!S.formDtcs.includes(p) && S.formDtcs.length < 20) {
@@ -881,13 +1559,16 @@ function addDtcFromInput() {
 
 function renderFormAttachments() {
   const el = $("#form-attachments-list");
+  if (!el) return;
   if (!S.formAttachments.length) {
     el.innerHTML = "";
     return;
   }
   el.innerHTML = S.formAttachments.map((att, idx) => `
     <div class="att-card">
-      <img class="att-thumb" src="${esc(att.data_url)}" alt="${esc(att.name)}" data-preview-img="${esc(att.data_url)}" data-preview-cap="${esc(att.caption || att.name)}">
+      <button type="button" class="att-thumb-btn" data-preview-img="${esc(att.data_url)}" data-preview-cap="${esc(att.caption || att.name)}" aria-label="${esc(att.name)} görselini büyüt">
+        <img class="att-thumb" src="${esc(att.data_url)}" alt="${esc(att.caption || att.name)}">
+      </button>
       <div class="att-meta">
         <span title="${esc(att.name)}">${esc(att.name)}</span>
         <button type="button" class="btn-subtle btn-xs" data-remove-att="${idx}">Kaldır</button>
@@ -897,14 +1578,38 @@ function renderFormAttachments() {
 }
 
 function handleFileReads(files, onAdd) {
-  [...files].slice(0, 6).forEach((file) => {
+  const list = [...files];
+  const errEl = $("#err-photo");
+  if (errEl) errEl.textContent = "";
+
+  if (S.formAttachments.length + list.length > MAX_ATT_COUNT) {
+    const msg = `En fazla ${MAX_ATT_COUNT} görsel referans eklenebilir.`;
+    if (errEl) errEl.textContent = msg;
+    toast(msg);
+    return;
+  }
+
+  list.forEach((file) => {
     if (!file.type.startsWith("image/")) {
-      toast("Lütfen geçerli bir görüntü dosyası (PNG, JPG, SVG) seçin.");
+      const msg = "Lütfen geçerli bir görsel formatı (PNG, JPG, WEBP, SVG) seçin.";
+      if (errEl) errEl.textContent = msg;
+      toast(msg);
       return;
     }
+    if (file.size > MAX_ATT_BYTES) {
+      const msg = `"${file.name}" dosya boyutu sınırı aşıyor (en fazla 500 KB).`;
+      if (errEl) errEl.textContent = msg;
+      toast(msg);
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
-      onAdd({ name: file.name, caption: `${file.name} (${Math.round(file.size / 1024)} KB)`, data_url: reader.result });
+      onAdd({
+        name: file.name,
+        caption: `${file.name} (${Math.round(file.size / 1024)} KB)`,
+        data_url: reader.result,
+      });
     };
     reader.readAsDataURL(file);
   });
@@ -913,24 +1618,31 @@ function handleFileReads(files, onAdd) {
 function renderScenariosBar() {
   const quickIds = ["can_comm", "hv_charging", "critical_fire", "engine_overheat", "intermittent_stall"];
   const quick = S.scenarios.filter((s) => quickIds.includes(s.id));
-  $("#quick-scenarios").innerHTML = quick.map((s) => `
-    <button type="button" class="scenario-pill-btn" data-fill-scenario="${esc(s.id)}">
-      <span>${esc(s.title)}</span>
-      <small>${esc(s.vehicle.family)}</small>
-    </button>
-  `).join("");
+  const qEl = $("#quick-scenarios");
+  if (qEl) {
+    qEl.innerHTML = quick.map((s) => `
+      <button type="button" class="scenario-pill-btn" data-fill-scenario="${esc(s.id)}">
+        <span>${esc(s.title)}</span>
+        <small>${esc(s.vehicle.family)}</small>
+      </button>
+    `).join("");
+  }
 
-  $("#all-scenarios-drawer").innerHTML = S.scenarios.map((s) => `
-    <button type="button" class="scenario-card-btn" data-fill-scenario="${esc(s.id)}">
-      <strong>${esc(s.title)}</strong>
-      <span>${esc(s.vehicle.family)} · ${s.vehicle.fuel === "electric" ? "Elektrik" : "Dizel"} · ${Number(s.vehicle.km).toLocaleString("tr-TR")} km</span>
-      <span>Beklenen: ${esc(s.expected === "ESCALATE" ? "ESCALATE (Uzman)" : nodeLabel(s.expected))}</span>
-    </button>
-  `).join("");
+  const allEl = $("#all-scenarios-drawer");
+  if (allEl) {
+    allEl.innerHTML = S.scenarios.map((s) => `
+      <button type="button" class="scenario-card-btn" data-fill-scenario="${esc(s.id)}">
+        <strong>${esc(s.title)}</strong>
+        <span>${esc(s.vehicle.family)} · ${s.vehicle.fuel === "electric" ? "Elektrik" : "Dizel"} · ${Number(s.vehicle.km).toLocaleString("tr-TR")} km</span>
+        <span>Beklenen: ${esc(s.expected === "ESCALATE" ? "ESCALATE (Uzman)" : nodeLabel(s.expected))}</span>
+      </button>
+    `).join("");
+  }
 }
 
 function prefillScenarioIntoForm(sc) {
   const f = $("#case-form");
+  if (!f) return;
   f.elements.family.value = sc.vehicle.family;
   f.elements.km.value = sc.vehicle.km;
   f.elements.vin.value = sc.vehicle.fuel === "electric" ? "NLNEV0800S0010421" : "NLNC12000R0041892";
@@ -941,9 +1653,64 @@ function prefillScenarioIntoForm(sc) {
   f.elements.repairs.value = sc.recent_repairs || "";
   f.elements.initial_measurements.value = "";
   f.dataset.scenarioId = sc.id;
+
   S.formDtcs = [...(sc.dtc_codes || [])];
   renderFormDtcChips();
-  toast(`"${sc.title}" senaryosu forma yüklendi. İnceleyip "Vakayı Analiz Et" butonuna basabilirsiniz.`);
+  S.formAttachments = [];
+  renderFormAttachments();
+
+  const bar = $("#active-scenario-bar");
+  const title = $("#active-scenario-title");
+  if (bar && title) {
+    title.textContent = `${sc.title} (${sc.vehicle.family})`;
+    bar.hidden = false;
+  }
+
+  setWizardStep(1);
+  toast(`"${sc.title}" senaryosu forma yüklendi.`);
+}
+
+function clearActiveScenario() {
+  const f = $("#case-form");
+  if (!f) return;
+  delete f.dataset.scenarioId;
+  const bar = $("#active-scenario-bar");
+  if (bar) bar.hidden = true;
+  f.reset();
+  S.formDtcs = [];
+  S.formAttachments = [];
+  renderFormDtcChips();
+  renderFormAttachments();
+  setWizardStep(1);
+  toast("Senaryo seçimi kaldırıldı ve form temizlendi.");
+}
+
+function saveDraftToStorage() {
+  const f = $("#case-form");
+  if (!f) return;
+  addDtcFromInput();
+  const draft = {
+    family: f.elements.family?.value || "",
+    vin: f.elements.vin?.value || "",
+    km: f.elements.km?.value || "",
+    location: f.elements.location?.value || "",
+    fuel: f.elements.fuel?.value || "diesel",
+    note: f.elements.note?.value || "",
+    repairs: f.elements.repairs?.value || "",
+    initial_measurements: f.elements.initial_measurements?.value || "",
+    dtcs: S.formDtcs,
+    attachments: S.formAttachments,
+    scenarioId: f.dataset.scenarioId || null,
+    wizardStep: S.wizardStep,
+  };
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    const banner = $("#draft-banner");
+    if (banner) banner.hidden = false;
+    toast("Taslak tarayıcıya kaydedildi.");
+  } catch (err) {
+    toast("Taslak kaydedilemedi (tarayıcı kota sınırı).");
+  }
 }
 
 function loadDraftIfPresent() {
@@ -951,11 +1718,12 @@ function loadDraftIfPresent() {
     const raw = localStorage.getItem(DRAFT_KEY);
     const banner = $("#draft-banner");
     if (!raw) {
-      banner.hidden = true;
+      if (banner) banner.hidden = true;
       return;
     }
     const d = JSON.parse(raw);
     const f = $("#case-form");
+    if (!f) return;
     if (d.family) f.elements.family.value = d.family;
     if (d.vin) f.elements.vin.value = d.vin;
     if (d.km) f.elements.km.value = d.km;
@@ -967,15 +1735,29 @@ function loadDraftIfPresent() {
     if (d.note) f.elements.note.value = d.note;
     if (d.repairs) f.elements.repairs.value = d.repairs;
     if (d.initial_measurements) f.elements.initial_measurements.value = d.initial_measurements;
+    if (d.scenarioId) {
+      f.dataset.scenarioId = d.scenarioId;
+      const sc = S.scenarios.find((x) => x.id === d.scenarioId);
+      const bar = $("#active-scenario-bar");
+      const title = $("#active-scenario-title");
+      if (bar && title && sc) {
+        title.textContent = `${sc.title} (${sc.vehicle.family})`;
+        bar.hidden = false;
+      }
+    }
     S.formDtcs = Array.isArray(d.dtcs) ? d.dtcs : [];
+    S.formAttachments = Array.isArray(d.attachments) ? d.attachments : [];
     renderFormDtcChips();
-    banner.hidden = false;
+    renderFormAttachments();
+    if (d.wizardStep) setWizardStep(d.wizardStep);
+    if (banner) banner.hidden = false;
   } catch {
-    $("#draft-banner").hidden = true;
+    const banner = $("#draft-banner");
+    if (banner) banner.hidden = true;
   }
 }
 
-// ---------- SCREEN D: Vaka Detayı (Case Detail & ServicePilot Decision Panel) ----------
+// ---------- SCREEN D: Vaka Detayı (Case Detail) ----------
 function barHtml(name, p, { thr, cls = "", hit = false } = {}) {
   const pctWidth = Math.max(0, Math.min(1, p || 0)) * 100;
   return `
@@ -991,17 +1773,18 @@ function barHtml(name, p, { thr, cls = "", hit = false } = {}) {
 
 function renderCaseDetail() {
   const container = $("#case-detail-view");
-  const c = S.cases.find((x) => x.id === S.selected) || S.cases[0];
+  if (!container) return;
+
+  const c = S.cases.find((x) => x.id === S.selected);
   if (!c) {
     container.innerHTML = `
       <div class="empty-state">
-        <h3>Görüntülenecek vaka seçilmedi</h3>
-        <p>Vaka listesinden bir kayıt seçin veya yeni bir servis vakası oluşturun.</p>
-        <a href="#cases" class="btn btn-secondary btn-sm">Vaka Listesine Dön</a>
+        <h3>Vaka bulunamadı</h3>
+        <p>Aradığınız <code>${esc(S.selected || "")}</code> numaralı servis vakası sistemde mevcut değil.</p>
+        <a href="#cases" class="btn btn-primary btn-sm">Vaka Listesine Dön</a>
       </div>`;
     return;
   }
-  S.selected = c.id;
 
   const step = c.steps?.at(-1) || { decision: {}, signals: null, latency_ms: 0 };
   const d = step.decision || {};
@@ -1011,26 +1794,68 @@ function renderCaseDetail() {
   const team = suggestedTeamInfo(c);
   const scenario = S.scenarios.find((s) => s.id === c.scenario_id);
 
-  // Determine top leaf probability for display
   const topLeafId = d.target && d.target !== "expert_desk" ? d.target : d.baseline_one_shot;
   const topProb = topLeafId && d.nodes ? d.nodes[topLeafId] : null;
 
-  // Missing evidence info
   const reqEvId = c.pending_evidence || d.evidence_id || d.candidates?.[0]?.id;
   const reqEv = reqEvId ? S.catalog.evidence[reqEvId] : null;
   const reqCand = d.candidates?.find((x) => x.id === reqEvId) || d.candidates?.[0];
 
-  // Build readable rationale linked to actual evidence
-  const evParts = [];
-  if (c.dtc_codes?.length) evParts.push(`${c.dtc_codes.join(", ")} arıza kodu`);
-  if (c.evidence?.length) evParts.push(`toplanan ${c.evidence.length} saha kanıtı (${c.evidence.map((e) => e.label).join(", ")})`);
-  else evParts.push("teknisyen arıza açıklaması");
+  // Human vs machine override indicator
+  const hasHumanOverride = ["confirmed", "approved", "overridden"].includes(c.review_status) && c.final;
+  const machineDiffers = hasHumanOverride && c.machine_recommendation && c.machine_recommendation.target !== c.final.target;
 
-  const readableRationale = d.safety_hits?.length
-    ? `Vaka kaydında güvenlik açısından kritik ifade ("${d.safety_hits.join(", ")}") tespit edildi. Deterministik güvenlik kapısı (Safety Gate) gereği otomatik yönlendirme durdurularak vaka doğrudan Merkez Uzman Masasına aktarıldı.`
-    : `${evParts.join(" ve ")}, ${team.label} incelemesini öne çıkarıyor. ${d.reason || ""}`;
+  // Build Top "Sıradaki İşlem" Banner
+  let nextActionKicker = "Sıradaki İşlem";
+  let nextActionTitle = "";
+  let nextActionReason = "";
+  let nextActionBtnHtml = "";
+  let nextActionCls = "";
 
-  // Missing Evidence section (Signature feature)
+  if (cat === "awaiting_evidence" && reqEv) {
+    nextActionKicker = "Sıradaki İşlem · Eksik Kanıt Bekleniyor";
+    nextActionTitle = `${reqEv.label} sonucunu ekleyin`;
+    nextActionReason = `Hedef uzman ekibi belirlemek için ${reqEv.informs.map(nodeLabel).join(" ve ")} olasılıklarının ayrıştırılması gerekiyor.`;
+    nextActionBtnHtml = `<button type="button" class="btn btn-primary btn-sm" data-open-ev-modal="${esc(reqEvId)}">Kanıt Ekle</button>`;
+    nextActionCls = "is-warning";
+  } else if (cat === "expert_review") {
+    nextActionKicker = "Sıradaki İşlem · İnsan Uzman Onayı Gerekli";
+    nextActionTitle = isCriticalCase(c) ? "Kritik güvenlik eskalasyonunu inceleyin" : "Yönlendirme kararını onaylayın";
+    nextActionReason = d.safety_hits?.length
+      ? `Güvenlik kuralı tetiklendi (${d.safety_hits.join(", ")}). Otomatik yönlendirme durduruldu.`
+      : (d.reason || "Belirsizlik veya risk eşiği aşıldı; insan uzman teyidi gerekiyor.");
+    nextActionBtnHtml = team.id === "expert_desk"
+      ? `<button type="button" class="btn btn-primary btn-sm" data-open-override="approve">Uzman Kararı Ver / Yönlendir</button>`
+      : `<button type="button" class="btn btn-primary btn-sm" data-open-override="approve">Öneriyi Onayla (${esc(team.label)})</button>`;
+    nextActionCls = "is-critical";
+  } else if (cat === "inspecting") {
+    nextActionKicker = "Sıradaki İşlem · Yönlendirme Teyidi";
+    nextActionTitle = `${team.label} ekibine devri onaylayın`;
+    nextActionReason = `Kanıt yeterliliği (${sig ? pct(sig.sufficient) : "—"}) ve uzmanlık olasılığı eşiği aşıldı.`;
+    nextActionBtnHtml = `<button type="button" class="btn btn-primary btn-sm" data-case-action="confirm_route">Yönlendirmeyi Onayla</button>`;
+    nextActionCls = "";
+  } else {
+    nextActionKicker = "İşlem Durumu · Yönlendirildi";
+    nextActionTitle = `Vaka ${team.label} uzman ekibine devredildi`;
+    nextActionReason = `Operasyonel yönlendirme kararı kayıt altına alındı.`;
+    nextActionBtnHtml = `<button type="button" class="btn btn-secondary btn-sm" data-open-override="override">Ekibi Değiştir (Override)</button>`;
+    nextActionCls = "";
+  }
+
+  const nextActionBannerHtml = `
+    <section class="next-action-banner ${nextActionCls}" aria-label="Sıradaki İşlem Özeti">
+      <div class="next-action-info">
+        <div class="next-action-kicker">${esc(nextActionKicker)}</div>
+        <div class="next-action-title">${esc(nextActionTitle)}</div>
+        <div class="next-action-reason">${esc(nextActionReason)}</div>
+      </div>
+      <div class="next-action-cta">
+        ${nextActionBtnHtml}
+      </div>
+    </section>
+  `;
+
+  // Missing evidence box
   let missingEvidenceHtml = "";
   if (c.status === "awaiting_evidence" && reqEv) {
     const informsLabels = (reqEv.informs || []).map(nodeLabel).join(" ile ");
@@ -1067,11 +1892,11 @@ function renderCaseDetail() {
           <span class="badge badge-routed">Kanıt Durumu</span>
         </div>
         <div class="me-title">
-          ${c.status === "escalated" ? "Güvenlik nedeniyle saha testi durduruldu" : "Yönlendirme için mevcut kanıtlar yeterli"}
+          ${isCriticalCase(c) ? "Güvenlik nedeniyle saha testi durduruldu" : "Yönlendirme için mevcut kanıtlar yeterli"}
         </div>
         <p class="me-explanation">
-          ${c.status === "escalated"
-            ? "Kritik güvenlik uyarısı bulunan vakalarda teknisyenden ek saha denemesi istenmez; doğrudan uzman incelemesi başlatılır."
+          ${isCriticalCase(c)
+            ? "Kritik güvenlik uyarısı bulunan vakalarda teknisyenden ek saha denemesi istenmez; yalnızca güvenli belge/fotoğraf eklenebilir."
             : "Toplanan ölçümler ve arıza kodları hedef uzmanlık eşiğini karşıladığı için ek kanıt talebine gerek duyulmadı."}
         </p>
         <div>
@@ -1083,7 +1908,7 @@ function renderCaseDetail() {
     `;
   }
 
-  // Risk & Human Approval Section
+  // Risk & Human Approval Box
   let riskApprovalHtml = "";
   if (cat === "expert_review") {
     riskApprovalHtml = `
@@ -1094,7 +1919,7 @@ function renderCaseDetail() {
         </div>
         <p class="risk-approval-desc">
           ${d.safety_hits?.length
-            ? `Vaka açıklamasında güvenlik açısından kritik bulgu (${esc(d.safety_hits.join(", "))}) yer aldığı için sistem yönlendirme kararını otomatik kesinleştiremez.`
+            ? `Vaka açıklamasında güvenlik açısından kritik ifade (${esc(d.safety_hits.join(", "))}) yer aldığı için otomatik yönlendirme durduruldu.`
             : `Kritik risk olasılığı veya belirsizlik eşiği aşıldığı için yönlendirme kararı insan uzman tarafından onaylanmalıdır.`}
         </p>
       </div>
@@ -1107,7 +1932,7 @@ function renderCaseDetail() {
           <span>Kanıt tamamlanmadan otomatik yönlendirme önerilmez</span>
         </div>
         <p class="risk-approval-desc">
-          Mevcut kanıt yeterliliği (${sig ? pct(sig.sufficient) : "—"}) hedef eşiğin (${pct(st.tau_suff)}) altında. Yanlış uzman kuyruğuna yönlendirme riskini (R=${num(d.risk, 3)}) düşürmek için önce önerilen kanıtı ekleyin veya uzman incelemesine gönderin.
+          Mevcut kanıt yeterliliği (${sig ? pct(sig.sufficient) : "—"}) hedef eşiğin (${pct(st.tau_suff)}) altında. Yanlış ekibe yönlendirme riskini düşürmek için önce önerilen kanıtı ekleyin.
         </p>
       </div>
     `;
@@ -1116,10 +1941,10 @@ function renderCaseDetail() {
       <div class="risk-approval-box">
         <div class="risk-approval-head" style="color:var(--info)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-          <span>Yönlendirme önerisi onaya hazır</span>
+          <span>Yönlendirme önerisi hazır</span>
         </div>
         <p class="risk-approval-desc">
-          Kanıt yeterliliği ve uzmanlık olasılığı eşikleri karşılandı. Önerilen <strong>${esc(team.label)}</strong> yönlendirmesini onaylayarak vakayı ilgili ekibe atayabilirsiniz.
+          Kanıt yeterliliği ve uzmanlık olasılığı eşikleri karşılandı. Önerilen <strong>${esc(team.label)}</strong> yönlendirmesini onaylayarak vakayı devredebilirsiniz.
         </p>
       </div>
     `;
@@ -1128,26 +1953,26 @@ function renderCaseDetail() {
       <div class="risk-approval-box">
         <div class="risk-approval-head" style="color:var(--accent)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-          <span>Yönlendirme kararı onaylandı</span>
+          <span>Yönlendirme kararı kesinleşti</span>
         </div>
         <p class="risk-approval-desc">
-          Vaka <strong>${esc(team.label)}</strong> uzman ekibine yönlendirildi ve karar geçmişine işlendi.
+          Vaka <strong>${esc(team.label)}</strong> uzman ekibine yönlendirildi.
         </p>
       </div>
     `;
   }
 
-  // State-dependent Primary & Secondary Actions (Screen D requirement)
+  // Decision Actions Stack
   let stateActionsHtml = "";
   if (cat === "awaiting_evidence") {
     stateActionsHtml = `
       <div class="decision-actions">
         <button type="button" class="btn btn-warning" data-case-action="request_evidence">
-          Kanıt İste (Teknisyene Bildir)
+          Kanıt Talebini Kaydet
         </button>
         <div class="decision-actions-secondary">
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman İncelemesine Gönder</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="confirm_route">Yönlendirmeyi Onayla</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman Masasına Gönder</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-open-override="override">Ekibi Değiştir (Override)</button>
         </div>
       </div>
     `;
@@ -1155,11 +1980,11 @@ function renderCaseDetail() {
     stateActionsHtml = `
       <div class="decision-actions">
         <button type="button" class="btn btn-primary" data-open-override="approve">
-          Yönlendirmeyi Onayla (Uzman Kararı)
+          ${team.id === "expert_desk" ? "Uzman Yönlendirme Kararı Ver" : "Önerilen Yönlendirmeyi Onayla"}
         </button>
         <div class="decision-actions-secondary">
           <button type="button" class="btn btn-secondary btn-sm" data-open-override="override">Farklı Ekibe Yönlendir</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="request_evidence">Kanıt İste</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-case-action="request_evidence">Güvenli Belge İste</button>
         </div>
       </div>
     `;
@@ -1170,8 +1995,8 @@ function renderCaseDetail() {
           Yönlendirmeyi Onayla (${esc(team.label)})
         </button>
         <div class="decision-actions-secondary">
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman İncelemesine Gönder</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="request_evidence">Kanıt İste</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman Masasına Gönder</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-open-override="override">Farklı Ekibe Yönlendir</button>
         </div>
       </div>
     `;
@@ -1180,19 +2005,15 @@ function renderCaseDetail() {
       <div class="decision-actions">
         <div class="decision-actions-secondary">
           <button type="button" class="btn btn-secondary btn-sm" data-open-override="override">Farklı Ekibe Yönlendir</button>
-          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman İncelemesine Gönder</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-case-action="escalate">Uzman Masasına Aktar</button>
         </div>
       </div>
     `;
   }
 
-  // Technical Explainability (Jev signals + Taxonomy tree + Candidate Utility Table)
+  // Technical Explainability Accordion
   let techAccordionHtml = "";
   if (sig) {
-    const leaves = Object.entries(d.nodes || {})
-      .filter(([k]) => S.catalog.leaves.includes(k))
-      .sort((a, b) => b[1] - a[1]);
-
     techAccordionHtml = `
       <details class="tech-details">
         <summary>
@@ -1231,7 +2052,6 @@ function renderCaseDetail() {
             <div>
               <div class="analysis-label" style="margin-bottom:6px">
                 <span>Aday Kanıtlar · U(e) = L·Δerr − λ·C</span>
-                <span>Varsayım</span>
               </div>
               <table class="mini-table">
                 <thead>
@@ -1253,7 +2073,7 @@ function renderCaseDetail() {
 
           <div style="display:flex;justify-content:flex-end">
             <button type="button" class="btn btn-subtle btn-xs" id="recompute-btn">
-              Güncel Politika Ayarlarıyla Yeniden Hesapla (Jev Çağrısız)
+              Güncel Politika Ayarlarıyla Yeniden Hesapla
             </button>
           </div>
         </div>
@@ -1261,22 +2081,24 @@ function renderCaseDetail() {
     `;
   }
 
-  // Left Column: Attachments Gallery
+  // Attachments
   const attachments = c.attachments || [];
   const attachmentsHtml = attachments.length
     ? `<div class="attachment-previews">
         ${attachments.map((att) => `
           <div class="att-card">
-            <img class="att-thumb" src="${esc(att.data_url)}" alt="${esc(att.caption || att.name)}" data-preview-img="${esc(att.data_url)}" data-preview-cap="${esc(att.caption || att.name)}">
+            <button type="button" class="att-thumb-btn" data-preview-img="${esc(att.data_url)}" data-preview-cap="${esc(att.caption || att.name)}" aria-label="${esc(att.name)} görselini büyüt">
+              <img class="att-thumb" src="${esc(att.data_url)}" alt="${esc(att.caption || att.name)}">
+            </button>
             <div class="att-meta">
               <span title="${esc(att.caption || att.name)}">${esc(att.caption || att.name)}</span>
             </div>
           </div>
         `).join("")}
       </div>`
-    : `<p class="field-hint" style="margin-top:8px">Henüz bu vakaya ait fotoğraf yüklenmedi. "Kanıt Ekle" penceresinden konnektör veya parça fotoğrafı ekleyebilirsiniz.</p>`;
+    : `<p class="field-hint" style="margin-top:8px">Henüz bu vakaya ait fotoğraf yüklenmedi.</p>`;
 
-  // Left Column: Evidence Timeline
+  // Timeline
   const timelineHtml = `
     <ol class="evidence-timeline">
       <li class="ev-timeline-item initial">
@@ -1301,7 +2123,7 @@ function renderCaseDetail() {
     </ol>
   `;
 
-  // Audit Trail
+  // Audit trail
   const auditItems = c.audit?.length
     ? c.audit
     : [{ at: c.created_at, actor: "Sistem (RAEP)", action: d.action || "Değerlendirildi", detail: d.reason || "İlk analiz tamamlandı." }];
@@ -1322,8 +2144,10 @@ function renderCaseDetail() {
       </div>
     </div>
 
+    ${nextActionBannerHtml}
+
     <div class="detail-grid">
-      <!-- LEFT 60%: Case & Evidence -->
+      <!-- LEFT 60%: Case & Evidence Details -->
       <div class="detail-left-col">
         <section class="card" aria-labelledby="veh-sum-h">
           <div class="section-header" style="margin-bottom:8px">
@@ -1367,7 +2191,7 @@ function renderCaseDetail() {
           <div class="section-header" style="margin-bottom:4px">
             <div>
               <h2 id="photos-h">Yüklenen Fotoğraflar ve Görsel Kanıtlar</h2>
-              <p class="section-subtitle">Saha teknisyeni tarafından eklenen görsel inceleme kayıtları</p>
+              <p class="section-subtitle">Saha teknisyeni tarafından eklenen görsel kayıtlar</p>
             </div>
             <button type="button" class="btn btn-subtle btn-xs" data-open-ev-modal="connector_photo">+ Fotoğraf Ekle</button>
           </div>
@@ -1378,7 +2202,7 @@ function renderCaseDetail() {
           <div class="section-header" style="margin-bottom:4px">
             <div>
               <h2 id="ev-tl-h">Kanıt Zaman Çizelgesi</h2>
-              <p class="section-subtitle">Vaka açılışından itibaren toplanan tüm teknik kanıtlar (${(c.evidence?.length || 0) + 1} kayıt)</p>
+              <p class="section-subtitle">Vaka açılışından itibaren kaydedilen adımlar (${(c.evidence?.length || 0) + 1} kayıt)</p>
             </div>
           </div>
           ${timelineHtml}
@@ -1401,20 +2225,29 @@ function renderCaseDetail() {
             <span class="badge badge-neutral mono">${sig ? `${step.latency_ms} ms` : "Safety Gate"}</span>
           </div>
 
-          <!-- 1. Önerilen Uzman Ekip -->
+          <!-- 1. Hedef / Önerilen Uzman Ekip -->
           <div class="analysis-block">
             <div class="analysis-label">
-              <span>Önerilen Uzman Ekip</span>
+              <span>Hedef Uzman Ekip</span>
               ${topProb != null ? `<span class="mono">Güven: ${pct(topProb)}</span>` : ""}
             </div>
             <div class="specialist-box">
               <div class="specialist-name">
                 <span>${esc(team.label)}</span>
-                ${c.review_status === "confirmed" || c.review_status === "approved" || c.review_status === "overridden"
-                  ? `<span class="badge badge-routed">Onaylı</span>`
-                  : ""}
+                ${c.review_status === "confirmed" || c.review_status === "approved"
+                  ? `<span class="badge badge-routed">Onaylandı</span>`
+                  : c.review_status === "overridden"
+                  ? `<span class="badge badge-warning">Değiştirildi (Override)</span>`
+                  : c.review_status === "pending_confirmation"
+                  ? `<span class="badge badge-inspecting">Önerildi · Onay Bekliyor</span>`
+                  : `<span class="badge badge-escalated">Uzman Onayında</span>`}
               </div>
               <span class="specialist-path">${esc(hierarchyPath(team.id))}</span>
+              ${machineDiffers ? `
+                <div class="callout-bar warning-bar" style="margin-top:8px;padding:8px 10px;font-size:0.78rem">
+                  <strong>İnsan Tercihi Korundu:</strong> Uzman kararı <em>${esc(c.final.target_label)}</em> olarak kayıtlı. Güncel politika algoritması <em>${esc(c.machine_recommendation.target_label)}</em> öneriyor.
+                </div>
+              ` : ""}
             </div>
           </div>
 
@@ -1423,13 +2256,13 @@ function renderCaseDetail() {
             <div class="analysis-label">
               <span>Değerlendirme Gerekçesi</span>
             </div>
-            <div class="rationale-text">${esc(readableRationale)}</div>
+            <div class="rationale-text">${esc(d.reason || "Vaka analizi tamamlandı.")}</div>
           </div>
 
           <!-- 3. Eksik Kanıt (Signature Feature) -->
           <div class="analysis-block">
             <div class="analysis-label">
-              <span>Eksik Kanıt</span>
+              <span>Eksik Kanıt Durumu</span>
               ${sig ? `<span class="mono">Yeterlilik: ${pct(sig.sufficient)}</span>` : ""}
             </div>
             ${missingEvidenceHtml}
@@ -1438,7 +2271,7 @@ function renderCaseDetail() {
           <!-- 4. Risk ve İnsan Onayı -->
           <div class="analysis-block">
             <div class="analysis-label">
-              <span>Risk ve İnsan Onayı</span>
+              <span>Risk ve Onay Durumu</span>
             </div>
             ${riskApprovalHtml}
           </div>
@@ -1486,15 +2319,21 @@ function renderExpertReview() {
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-selected", String(active));
   });
-  $("#review-tab-queue").hidden = S.reviewTab !== "queue";
-  $("#review-tab-teams").hidden = S.reviewTab !== "teams";
-  $("#review-tab-policy").hidden = S.reviewTab !== "policy";
+
+  const qPanel = $("#review-tab-queue");
+  const tPanel = $("#review-tab-teams");
+  const pPanel = $("#review-tab-policy");
+  if (qPanel) qPanel.hidden = S.reviewTab !== "queue";
+  if (tPanel) tPanel.hidden = S.reviewTab !== "teams";
+  if (pPanel) pPanel.hidden = S.reviewTab !== "policy";
 
   // 1. Expert Review Queue
   const pendingReviewCases = S.cases.filter((c) => caseCategory(c) === "expert_review" || caseCategory(c) === "inspecting");
   const reviewedCases = S.cases.filter((c) => c.review_status === "approved" || c.review_status === "overridden" || c.review_status === "confirmed");
 
   const listEl = $("#expert-review-list");
+  if (!listEl) return;
+
   const renderReviewCard = (c, isCompleted = false) => {
     const step = c.steps?.at(-1);
     const d = step?.decision || {};
@@ -1506,7 +2345,7 @@ function renderExpertReview() {
 
     const reviewStatusMap = {
       pending_review: ["badge-escalated", "Uzman Onayında"],
-      pending_confirmation: ["badge-inspecting", "Yönlendirme Onayı Bekliyor"],
+      pending_confirmation: ["badge-inspecting", "Onay Bekliyor"],
       approved: ["badge-routed", "Uzman Tarafından Onaylandı"],
       overridden: ["badge-warning", "Uzman Tarafından Değiştirildi"],
       confirmed: ["badge-routed", "Onaylandı"],
@@ -1540,7 +2379,7 @@ function renderExpertReview() {
             </div>
           </div>
           <div class="review-col">
-            <h4>Önerilen Uzman Ekip</h4>
+            <h4>Hedef Uzman Ekip</h4>
             <p style="font-weight:600;font-size:0.95rem">${esc(team.label)}</p>
             <span class="field-hint">${esc(hierarchyPath(team.id))}</span>
           </div>
@@ -1554,7 +2393,7 @@ function renderExpertReview() {
                 Farklı Ekibe Yönlendir (Override)
               </button>
               <button type="button" class="btn btn-primary btn-sm" data-review-approve="${esc(c.id)}">
-                Önerilen Yönlendirmeyi Onayla
+                ${team.id === "expert_desk" ? "Uzman Kararı Ver" : "Yönlendirmeyi Onayla"}
               </button>
             </div>
           ` : `
@@ -1571,21 +2410,21 @@ function renderExpertReview() {
     <div class="section-header">
       <div>
         <h2>Onay Bekleyen Vakalar (${pendingReviewCases.length})</h2>
-        <p class="section-subtitle">Güvenlik kapısı (Safety Gate), yüksek risk olasılığı veya yönlendirme teyidi bekleyen vakalar</p>
+        <p class="section-subtitle">Güvenlik kapısı, kritik risk veya yönlendirme teyidi bekleyen vaka kayıtları</p>
       </div>
     </div>
     ${pendingReviewCases.length
       ? `<div class="review-queue-list">${pendingReviewCases.map((c) => renderReviewCard(c, false)).join("")}</div>`
       : `<div class="empty-state">
           <h3>İnceleme bekleyen vaka bulunmuyor</h3>
-          <p>Kritik veya onay bekleyen tüm vakalar değerlendirildi.</p>
+          <p>Kritik veya onay bekleyen tüm servis vakaları değerlendirildi.</p>
         </div>`
     }
 
     ${reviewedCases.length ? `
       <div class="section-header" style="margin-top:28px">
         <div>
-          <h2>Kaydedilmiş Uzman ve Yönlendirme Kararları (${reviewedCases.length})</h2>
+          <h2>Tamamlanmış Uzman ve Yönlendirme Kararları (${reviewedCases.length})</h2>
           <p class="section-subtitle">Uzman onayı veya yönlendirme değişikliği tamamlanmış vakalar</p>
         </div>
       </div>
@@ -1593,40 +2432,43 @@ function renderExpertReview() {
     ` : ""}
   `;
 
-  // 2. Specialist Team Queues (FR-11)
+  // 2. Specialist Team Queues
   const groups = {};
   for (const c of S.cases.filter((x) => x.final)) {
     (groups[c.final.target] ??= []).push(c);
   }
   const order = ["expert_desk", ...Object.keys(S.catalog.nodes)];
-  $("#queues-grid").innerHTML = order
-    .filter((k) => groups[k] || S.catalog.leaves.includes(k) || k === "expert_desk")
-    .map((k) => {
-      const fallback = k !== "expert_desk" && !S.catalog.leaves.includes(k);
-      const list = groups[k] || [];
-      return `
-        <section class="card queue-card ${k === "expert_desk" ? "desk" : ""}">
-          <div class="queue-card-head">
-            <strong>${esc(nodeLabel(k))}${fallback ? " <small class='text-secondary'>(Üst Düğüm)</small>" : ""}</strong>
-            <span class="badge ${list.length ? "badge-accent" : "badge-neutral"} mono">${list.length}</span>
-          </div>
-          ${list.length
-            ? list.map((c) => `
-              <a href="#cases/${esc(c.id)}" class="queue-item-link">
-                <div style="display:flex;justify-content:space-between;gap:6px">
-                  <strong class="mono">${esc(c.id)}</strong>
-                  <span class="text-secondary">${esc(c.vehicle.family)}</span>
-                </div>
-                <div class="text-secondary" style="font-size:0.78rem;margin-top:3px">${esc(c.technician_note.slice(0, 72))}…</div>
-              </a>
-            `).join("")
-            : `<p class="field-hint">Bu kuyrukta bekleyen vaka yok.</p>`}
-        </section>
-      `;
-    }).join("");
+  const qGrid = $("#queues-grid");
+  if (qGrid) {
+    qGrid.innerHTML = order
+      .filter((k) => groups[k] || S.catalog.leaves.includes(k) || k === "expert_desk")
+      .map((k) => {
+        const fallback = k !== "expert_desk" && !S.catalog.leaves.includes(k);
+        const list = groups[k] || [];
+        return `
+          <section class="card queue-card ${k === "expert_desk" ? "desk" : ""}">
+            <div class="queue-card-head">
+              <strong>${esc(nodeLabel(k))}${fallback ? " <small class='text-secondary'>(Üst Düğüm)</small>" : ""}</strong>
+              <span class="badge ${list.length ? "badge-accent" : "badge-neutral"} mono">${list.length}</span>
+            </div>
+            ${list.length
+              ? list.map((c) => `
+                <a href="#cases/${esc(c.id)}" class="queue-item-link">
+                  <div style="display:flex;justify-content:space-between;gap:6px">
+                    <strong class="mono">${esc(c.id)}</strong>
+                    <span class="text-secondary">${esc(c.vehicle.family)}</span>
+                  </div>
+                  <div class="text-secondary" style="font-size:0.78rem;margin-top:3px">${esc(c.technician_note.slice(0, 72))}…</div>
+                </a>
+              `).join("")
+              : `<p class="field-hint">Bu kuyrukta bekleyen vaka yok.</p>`}
+          </section>
+        `;
+      }).join("");
+  }
 }
 
-// ---------- Policy & Replay (FR-10, FR-13) ----------
+// ---------- Policy & Replay Rendering ----------
 const POLICY_FIELDS = [
   ["tau_route", "τ_route · Otomatik yönlendirme eşiği", 0.5, 0.99, 0.01, "Uzmanlık düğümüne yönlendirme için gereken minimum olasılık."],
   ["tau_suff", "τ_suff · Kanıt yeterlilik eşiği", 0, 1, 0.01, "Yaprak uzmanlığa doğrudan yönlendirme için Jev sufficient alt sınırı."],
@@ -1658,25 +2500,28 @@ function renderPolicySection() {
     if (e.target.name) $(`#o-${e.target.name}`).value = e.target.value;
   };
 
-  $("#evidence-catalog").innerHTML = `
-    <table class="mini-table">
-      <thead>
-        <tr><th>Kanıt</th><th class="num">T (dk)</th><th class="num">E</th><th class="num">S</th><th class="num">ρ</th><th>Ayırt Ettiği Uzmanlıklar</th></tr>
-      </thead>
-      <tbody>
-        ${Object.values(S.catalog.evidence).map((e) => `
-          <tr>
-            <td>${esc(e.label)}${e.requires_ev ? " <span class='badge badge-info'>EV</span>" : ""}</td>
-            <td class="num">${e.T}</td>
-            <td class="num">${e.E}</td>
-            <td class="num">${e.S}</td>
-            <td class="num">${e.rho}</td>
-            <td class="text-secondary">${e.informs.map(nodeLabel).join(", ")}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  `;
+  const catEl = $("#evidence-catalog");
+  if (catEl) {
+    catEl.innerHTML = `
+      <table class="mini-table">
+        <thead>
+          <tr><th>Kanıt</th><th class="num">T (dk)</th><th class="num">E</th><th class="num">S</th><th class="num">ρ</th><th>Ayırt Ettiği Uzmanlıklar</th></tr>
+        </thead>
+        <tbody>
+          ${Object.values(S.catalog.evidence).map((e) => `
+            <tr>
+              <td>${esc(e.label)}${e.requires_ev ? " <span class='badge badge-info'>EV</span>" : ""}</td>
+              <td class="num">${e.T}</td>
+              <td class="num">${e.E}</td>
+              <td class="num">${e.S}</td>
+              <td class="num">${e.rho}</td>
+              <td class="text-secondary">${e.informs.map(nodeLabel).join(", ")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
 }
 
 function replayCorrect(expected, x) {
@@ -1719,52 +2564,78 @@ function renderReplayOutput(data) {
       </td>`;
   };
 
-  $("#replay-out").innerHTML = `
-    <div class="metric-cards">${cards}</div>
-    <div class="table-scroll">
-      <table class="mini-table">
-        <thead><tr><th>Senaryo</th><th>Beklenen</th><th>ServicePilot</th><th>Baseline B</th><th>Baseline C</th></tr></thead>
-        <tbody>
-          ${data.rows.map((r) => `
-            <tr>
-              <td>
-                <strong>${esc(r.title)}</strong>
-                ${r.servicepilot.evidence?.length ? `<div class="field-hint">İstenen: ${esc(r.servicepilot.evidence.join(" → "))}</div>` : ""}
-              </td>
-              <td>${esc(r.expected_label)}</td>
-              ${cell(r, "servicepilot")}${cell(r, "baseline_b")}${cell(r, "baseline_c")}
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+  const outEl = $("#replay-out");
+  if (outEl) {
+    outEl.innerHTML = `
+      <div class="metric-cards">${cards}</div>
+      <div class="table-scroll">
+        <table class="mini-table">
+          <thead><tr><th>Senaryo</th><th>Beklenen</th><th>ServicePilot</th><th>Baseline B</th><th>Baseline C</th></tr></thead>
+          <tbody>
+            ${data.rows.map((r) => `
+              <tr>
+                <td>
+                  <strong>${esc(r.title)}</strong>
+                  ${r.servicepilot.evidence?.length ? `<div class="field-hint">İstenen: ${esc(r.servicepilot.evidence.join(" → "))}</div>` : ""}
+                </td>
+                <td>${esc(r.expected_label)}</td>
+                ${cell(r, "servicepilot")}${cell(r, "baseline_b")}${cell(r, "baseline_c")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
 }
 
 // ---------- Modals: Evidence Entry & Expert Override ----------
 function openEvidenceModal(caseId, preferredEvId) {
   const c = S.cases.find((x) => x.id === caseId);
   if (!c) return;
+
   const modal = $("#evidence-modal");
   const select = $("#ev-modal-select");
-  const evEntries = Object.entries(S.catalog.evidence);
-  const chosenId = preferredEvId && S.catalog.evidence[preferredEvId] ? preferredEvId : c.pending_evidence || "connector_photo";
+  const banner = $("#ev-modal-requested-banner");
+  const fillBtn = $("#ev-modal-fill-btn");
+  const sc = S.scenarios.find((s) => s.id === c.scenario_id);
 
-  select.innerHTML = evEntries.map(([id, ev]) => `
+  // Filter to applicable evidence only
+  const applicableEntries = Object.entries(S.catalog.evidence).filter(([id]) => {
+    return validateEvidenceForCase(c, id, S.settings) == null;
+  });
+
+  const chosenId = (preferredEvId && applicableEntries.some(([id]) => id === preferredEvId))
+    ? preferredEvId
+    : (c.pending_evidence && applicableEntries.some(([id]) => id === c.pending_evidence))
+    ? c.pending_evidence
+    : applicableEntries[0]?.[0] || "connector_photo";
+
+  select.innerHTML = applicableEntries.map(([id, ev]) => `
     <option value="${esc(id)}" ${id === chosenId ? "selected" : ""}>${esc(ev.label)} (~${ev.T} dk · Efor ${ev.E}/5)</option>
   `).join("");
+
+  if (c.pending_evidence && S.catalog.evidence[c.pending_evidence]) {
+    banner.textContent = `Talep Edilen Kanıt: ${S.catalog.evidence[c.pending_evidence].label}`;
+    banner.hidden = false;
+  } else {
+    banner.hidden = true;
+  }
 
   const updateEvMeta = () => {
     const ev = S.catalog.evidence[select.value];
     $("#ev-modal-meta").textContent = ev
       ? `Ayırt ettiği uzmanlıklar: ${ev.informs.map(nodeLabel).join(", ")} · Güvenilirlik varsayımı ρ=${ev.rho}`
       : "";
-    const sc = S.scenarios.find((s) => s.id === c.scenario_id);
-    const fillBtn = $("#ev-modal-fill-btn");
-    fillBtn.hidden = !sc;
+
+    // Show fillBtn ONLY when scenario actually has an answer for this evidence (no fabricated NO_FINDING)
+    const hasScenarioAnswer = Boolean(sc?.answers && sc.answers[select.value]);
+    fillBtn.hidden = !hasScenarioAnswer;
     fillBtn.onclick = () => {
-      $("#ev-modal-result").value = sc?.answers?.[select.value] ?? NO_FINDING;
-      $("#ev-modal-error").textContent = "";
+      if (hasScenarioAnswer) {
+        $("#ev-modal-result").value = sc.answers[select.value];
+        $("#ev-modal-error").textContent = "";
+      }
     };
   };
 
@@ -1783,6 +2654,7 @@ function openEvidenceModal(caseId, preferredEvId) {
 function openOverrideModal(caseId, mode = "override") {
   const c = S.cases.find((x) => x.id === caseId);
   if (!c) return;
+
   const modal = $("#override-modal");
   const team = suggestedTeamInfo(c);
   const select = $("#ov-modal-target");
@@ -1792,17 +2664,19 @@ function openOverrideModal(caseId, mode = "override") {
     label: `${S.catalog.leaves.includes(id) ? "" : "[Üst Uzmanlık] "}${nodeLabel(id)}`,
   }));
 
+  const initialTarget = (team.id && team.id !== "expert_desk") ? team.id : S.catalog.leaves[0];
+
   select.innerHTML = options.map((o) => `
-    <option value="${esc(o.id)}" ${o.id === team.id ? "selected" : ""}>${esc(o.label)}</option>
+    <option value="${esc(o.id)}" ${o.id === initialTarget ? "selected" : ""}>${esc(o.label)}</option>
   `).join("");
 
   const isApprove = mode === "approve";
   $("#ov-modal-badge").textContent = isApprove ? "Uzman Onayı" : "Yönlendirme Değişikliği (Override)";
-  $("#ov-modal-title").textContent = isApprove ? "Önerilen Yönlendirmeyi Onayla" : "Farklı Uzman Ekibe Yönlendir";
+  $("#ov-modal-title").textContent = isApprove ? "Yönlendirme Kararını Onayla" : "Farklı Uzman Ekibe Yönlendir";
   $("#ov-modal-desc").textContent = isApprove
-    ? `${c.id} (${c.vehicle.family}) vakası için önerilen uzman ekibi onaylayın ve denetim izine kaydedin.`
-    : `${c.id} (${c.vehicle.family}) vakası için hedef uzman ekibi seçin ve değişiklik gerekçesini belirtin.`;
-  $("#ov-reason-req").textContent = isApprove ? "İsteğe bağlı" : "Zorunlu";
+    ? `${c.id} (${c.vehicle.family}) vakası için hedef uzman ekibi teyit edin ve kararı kaydedin.`
+    : `${c.id} (${c.vehicle.family}) vakası için hedef ekibi seçin ve değişiklik gerekçesini belirtin.`;
+  $("#ov-reason-req").textContent = isApprove ? "İsteğe bağlı" : "Zorunlu (en az 3 karakter)";
   $("#ov-modal-reason").value = "";
   $("#ov-modal-error").textContent = "";
 
@@ -1816,7 +2690,6 @@ function routeView() {
   const raw = location.hash.slice(1) || "overview";
   const [rawView, param] = raw.split("/");
 
-  // Map legacy hashes (#queues, #policy, #replay) to Screen E tabs so existing links never break
   let view = rawView;
   if (rawView === "queues") { view = "review"; S.reviewTab = "teams"; }
   else if (rawView === "policy" || rawView === "replay") { view = "review"; S.reviewTab = "policy"; }
@@ -1831,24 +2704,29 @@ function routeView() {
     else a.removeAttribute("aria-current");
   });
 
-  // Update Breadcrumb
+  // Breadcrumb
   const bc = $("#breadcrumb");
-  if (view === "overview") {
-    bc.innerHTML = `<span class="breadcrumb-current">Genel Bakış</span>`;
-  } else if (view === "cases") {
-    bc.innerHTML = `<a href="#overview">ServicePilot</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Vakalar</span>`;
-  } else if (view === "detail") {
-    const c = S.cases.find((x) => x.id === S.selected);
-    bc.innerHTML = `<a href="#cases">Vakalar</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current mono">${esc(c?.id || S.selected || "")}</span>${c ? `<span class="text-secondary">· ${esc(c.vehicle.family)}</span>` : ""}`;
-  } else if (view === "new") {
-    bc.innerHTML = `<a href="#cases">Vakalar</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Yeni Vaka</span>`;
-  } else if (view === "review") {
-    bc.innerHTML = `<a href="#overview">ServicePilot</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Uzman İncelemesi</span>`;
+  if (bc) {
+    if (view === "overview") {
+      bc.innerHTML = `<span class="breadcrumb-current">Genel Bakış</span>`;
+    } else if (view === "cases") {
+      bc.innerHTML = `<a href="#overview">ServicePilot</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Vakalar</span>`;
+    } else if (view === "detail") {
+      const c = S.cases.find((x) => x.id === S.selected);
+      bc.innerHTML = `<a href="#cases">Vakalar</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current mono">${esc(c?.id || S.selected || "")}</span>${c ? `<span class="text-secondary">· ${esc(c.vehicle.family)}</span>` : ""}`;
+    } else if (view === "new") {
+      bc.innerHTML = `<a href="#cases">Vakalar</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Yeni Vaka</span>`;
+    } else if (view === "review") {
+      bc.innerHTML = `<a href="#overview">ServicePilot</a><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Uzman İncelemesi</span>`;
+    }
   }
 
   // Close mobile drawer on navigation
-  $("#sidebar").classList.remove("open");
-  $("#sidebar-backdrop").hidden = true;
+  const sidebar = $("#sidebar");
+  const backdrop = $("#sidebar-backdrop");
+  if (sidebar) sidebar.classList.remove("open");
+  if (backdrop) backdrop.hidden = true;
+  $("#sidebar-open")?.setAttribute("aria-expanded", "false");
 
   if (view === "overview") renderOverview();
   if (view === "cases") renderCasesScreen();
@@ -1862,45 +2740,108 @@ function renderAll() {
   routeView();
 }
 
-// ---------- Event Listeners ----------
+// ---------- Event Listeners & Focus Management ----------
 function bindEvents() {
   window.addEventListener("hashchange", routeView);
 
-  // Mobile sidebar drawer
-  $("#sidebar-open")?.addEventListener("click", () => {
-    $("#sidebar").classList.add("open");
-    $("#sidebar-backdrop").hidden = false;
-  });
-  const closeDrawer = () => {
-    $("#sidebar").classList.remove("open");
-    $("#sidebar-backdrop").hidden = true;
-  };
-  $("#sidebar-close")?.addEventListener("click", closeDrawer);
-  $("#sidebar-backdrop")?.addEventListener("click", closeDrawer);
+  // Mobile sidebar drawer & accessibility
+  const sidebar = $("#sidebar");
+  const sidebarOpen = $("#sidebar-open");
+  const sidebarClose = $("#sidebar-close");
+  const sidebarBackdrop = $("#sidebar-backdrop");
 
-  // Quick policy & reset buttons in sidebar footer
+  const openDrawer = () => {
+    if (sidebar) sidebar.classList.add("open");
+    if (sidebarBackdrop) sidebarBackdrop.hidden = false;
+    sidebarOpen?.setAttribute("aria-expanded", "true");
+    sidebarClose?.focus();
+  };
+
+  const closeDrawer = () => {
+    if (sidebar) sidebar.classList.remove("open");
+    if (sidebarBackdrop) sidebarBackdrop.hidden = true;
+    sidebarOpen?.setAttribute("aria-expanded", "false");
+    sidebarOpen?.focus();
+  };
+
+  sidebarOpen?.addEventListener("click", openDrawer);
+  sidebarClose?.addEventListener("click", closeDrawer);
+  sidebarBackdrop?.addEventListener("click", closeDrawer);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (sidebar && sidebar.classList.contains("open")) {
+        closeDrawer();
+      }
+    }
+  });
+
+  // Focus trap inside open mobile sidebar
+  sidebar?.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab" || !sidebar.classList.contains("open")) return;
+    const focusables = $$("a[href], button:not([disabled])", sidebar);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
+  // Tablist arrow navigation
+  $$('[role="tablist"]').forEach((tablist) => {
+    tablist.addEventListener("keydown", (e) => {
+      const tabs = $$('[role="tab"]', tablist);
+      const idx = tabs.indexOf(document.activeElement);
+      if (idx === -1) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        const next = tabs[(idx + 1) % tabs.length];
+        next.focus();
+        next.click();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+        prev.focus();
+        prev.click();
+      }
+    });
+  });
+
+  // Sidebar footer buttons
   $("#open-policy-btn")?.addEventListener("click", () => {
     S.reviewTab = "policy";
     location.hash = "#policy";
-    routeView();
   });
 
   $("#reset-demo-btn")?.addEventListener("click", async (e) => {
+    if (S.userModified) {
+      const ok = window.confirm("Mevcut vaka değişiklikleri silinecek ve 5 başlangıç demo vakası yeniden yüklenecektir. Devam edilsin mi?");
+      if (!ok) return;
+    }
     await busy(e.currentTarget, "Sıfırlanıyor…", async () => {
       S.cases = await api("/cases/seed", { method: "POST" });
       S.selected = S.cases[0]?.id || null;
+      S.userModified = false;
       renderAll();
       toast("5 temsili demo vakası başlangıç durumuna sıfırlandı.");
     });
   });
 
-  // Global search bar
+  $("#api-error-dismiss")?.addEventListener("click", hideApiError);
+
+  // Global search input
   const globalSearch = $("#global-search-input");
   globalSearch?.addEventListener("input", (e) => {
     S.caseSearch = e.target.value;
     if (location.hash !== "#cases") location.hash = "#cases";
     else renderCasesScreen();
   });
+
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
       e.preventDefault();
@@ -1908,11 +2849,12 @@ function bindEvents() {
     }
   });
 
-  // Cases search & status filter pills
+  // Cases search & filter pills
   $("#cases-search-input")?.addEventListener("input", (e) => {
     S.caseSearch = e.target.value;
     renderCasesScreen();
   });
+
   $("#status-filters")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-filter]");
     if (!btn) return;
@@ -1920,7 +2862,37 @@ function bindEvents() {
     renderCasesScreen();
   });
 
-  // Review view tabs
+  // Wizard Navigation
+  $$(".wizard-stepper .step-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const targetStep = Number(tab.dataset.stepTarget);
+      if (targetStep < S.wizardStep || validateWizardStep(S.wizardStep)) {
+        setWizardStep(targetStep);
+      }
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    const nextBtn = e.target.closest("[data-next-step]");
+    if (nextBtn) {
+      const targetStep = Number(nextBtn.dataset.nextStep);
+      if (validateWizardStep(S.wizardStep)) {
+        setWizardStep(targetStep);
+      }
+      return;
+    }
+    const prevBtn = e.target.closest("[data-prev-step]");
+    if (prevBtn) {
+      setWizardStep(Number(prevBtn.dataset.prevStep));
+      return;
+    }
+    if (e.target.closest("[data-save-draft]")) {
+      saveDraftToStorage();
+      return;
+    }
+  });
+
+  // Review screen tabs
   document.addEventListener("click", async (e) => {
     const tabBtn = e.target.closest("[data-review-tab]");
     if (tabBtn) {
@@ -1934,12 +2906,7 @@ function bindEvents() {
       location.hash = `#cases/${openCaseEl.dataset.openCase}`;
       return;
     }
-    if (openCaseEl && e.target.closest(".priority-case-card, tr[data-open-case]")) {
-      location.hash = `#cases/${openCaseEl.dataset.openCase}`;
-      return;
-    }
 
-    // Scenario prefill
     const fillSc = e.target.closest("[data-fill-scenario]");
     if (fillSc) {
       const sc = S.scenarios.find((x) => x.id === fillSc.dataset.fillScenario);
@@ -1947,7 +2914,11 @@ function bindEvents() {
       return;
     }
 
-    // DTC chip suggest & remove
+    if (e.target.closest("#clear-scenario-btn")) {
+      clearActiveScenario();
+      return;
+    }
+
     const sug = e.target.closest("[data-dtc]");
     if (sug) {
       const code = sug.dataset.dtc;
@@ -1957,6 +2928,7 @@ function bindEvents() {
       }
       return;
     }
+
     const remDtc = e.target.closest("[data-remove-dtc]");
     if (remDtc) {
       S.formDtcs.splice(Number(remDtc.dataset.removeDtc), 1);
@@ -1964,7 +2936,6 @@ function bindEvents() {
       return;
     }
 
-    // Remove attachment from form
     const remAtt = e.target.closest("[data-remove-att]");
     if (remAtt) {
       S.formAttachments.splice(Number(remAtt.dataset.removeAtt), 1);
@@ -1972,80 +2943,92 @@ function bindEvents() {
       return;
     }
 
-    // Image lightbox preview
     const prevImg = e.target.closest("[data-preview-img]");
     if (prevImg) {
-      $("#img-modal-src").src = prevImg.dataset.previewImg;
-      $("#img-modal-caption").textContent = prevImg.dataset.previewCap || "";
-      $("#image-modal").showModal();
+      const modal = $("#image-modal");
+      const src = $("#img-modal-src");
+      const cap = $("#img-modal-caption");
+      if (modal && src && cap) {
+        src.src = prevImg.dataset.previewImg;
+        cap.textContent = prevImg.dataset.previewCap || "";
+        modal.showModal();
+      }
       return;
     }
 
-    // Close modal buttons
     const closeBtn = e.target.closest("[data-close-modal]");
     if (closeBtn) {
       $(`#${closeBtn.dataset.closeModal}`)?.close();
       return;
     }
 
-    // Open Evidence Modal
     const openEvBtn = e.target.closest("[data-open-ev-modal]");
     if (openEvBtn) {
       openEvidenceModal(S.selected, openEvBtn.dataset.openEvModal);
       return;
     }
 
-    // Open Override / Approve Modal from Case Detail or Review Screen
     const ovBtn = e.target.closest("[data-open-override]");
     if (ovBtn) {
       openOverrideModal(S.selected, ovBtn.dataset.openOverride);
       return;
     }
+
     const revOv = e.target.closest("[data-review-override]");
     if (revOv) {
       openOverrideModal(revOv.dataset.reviewOverride, "override");
       return;
     }
+
     const revApp = e.target.closest("[data-review-approve]");
     if (revApp) {
       const cid = revApp.dataset.reviewApprove;
-      await busy(revApp, "Onaylanıyor…", async () => {
-        const updated = await api(`/cases/${cid}/review`, { method: "POST", body: { action: "approve" } });
-        upsertCase(updated);
-        toast(`${cid} yönlendirmesi onaylandı.`);
-      });
+      const c = S.cases.find((x) => x.id === cid);
+      const team = c ? suggestedTeamInfo(c) : null;
+      if (team?.id === "expert_desk") {
+        openOverrideModal(cid, "approve");
+      } else {
+        await busy(revApp, "Onaylanıyor…", async () => {
+          const updated = await api(`/cases/${cid}/review`, { method: "POST", body: { action: "approve" } });
+          upsertCase(updated);
+          toast(`${cid} yönlendirmesi onaylandı.`);
+        });
+      }
       return;
     }
 
-    // State-dependent Case Actions on Screen D
     const caseAct = e.target.closest("[data-case-action]");
     if (caseAct) {
       const action = caseAct.dataset.caseAction;
       const c = S.cases.find((x) => x.id === S.selected);
       if (!c) return;
+
+      if (action === "request_evidence") {
+        openEvidenceModal(c.id, c.pending_evidence || "connector_photo");
+        return;
+      }
+
       await busy(caseAct, "İşleniyor…", async () => {
         const updated = await api(`/cases/${c.id}/review`, { method: "POST", body: { action } });
         upsertCase(updated);
         const msgMap = {
-          confirm_route: "Yönlendirme onaylandı ve uzman ekibe atandı.",
-          escalate: "Vaka uzman incelemesi (ProEye) kuyruğuna gönderildi.",
-          request_evidence: "Teknisyene eksik kanıt talebi iletildi.",
+          confirm_route: "Yönlendirme onaylandı.",
+          escalate: "Vaka uzman masasına aktarıldı.",
         };
-        toast(msgMap[action] || "Vaka durumu güncellendi.");
+        toast(msgMap[action] || "Vaka güncellendi.");
       });
     }
   });
 
-  // Toggle all scenarios drawer on New Case screen
   $("#toggle-scenarios-btn")?.addEventListener("click", (e) => {
     const drawer = $("#all-scenarios-drawer");
+    if (!drawer) return;
     const open = drawer.hidden;
     drawer.hidden = !open;
     e.currentTarget.setAttribute("aria-expanded", String(open));
-    e.currentTarget.textContent = open ? "Senaryoları Gizle" : `Senaryoları Göster (${S.scenarios.length})`;
+    e.currentTarget.textContent = open ? "Senaryoları Gizle" : `Tüm Senaryolar (${S.scenarios.length})`;
   });
 
-  // Auto-select electric fuel when EV model chosen
   $("#family")?.addEventListener("input", (e) => {
     const val = e.target.value.toLowerCase();
     if (val.includes("volt") || val.includes("citivolt")) {
@@ -2054,7 +3037,6 @@ function bindEvents() {
     }
   });
 
-  // DTC chip entry
   $("#add-dtc-btn")?.addEventListener("click", addDtcFromInput);
   $("#dtc-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === ",") {
@@ -2063,7 +3045,7 @@ function bindEvents() {
     }
   });
 
-  // Photo dropzone in New Case Form
+  // Dropzone
   const dropzone = $("#photo-dropzone");
   const photoInput = $("#photo-input");
   dropzone?.addEventListener("click", () => photoInput?.click());
@@ -2095,74 +3077,34 @@ function bindEvents() {
     }
   });
 
-  // Draft save & clear
-  $("#save-draft-btn")?.addEventListener("click", () => {
-    const f = $("#case-form");
-    const draft = {
-      family: f.elements.family.value,
-      vin: f.elements.vin.value,
-      km: f.elements.km.value,
-      location: f.elements.location.value,
-      fuel: f.elements.fuel.value,
-      note: f.elements.note.value,
-      repairs: f.elements.repairs.value,
-      initial_measurements: f.elements.initial_measurements.value,
-      dtcs: S.formDtcs,
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    $("#draft-banner").hidden = false;
-    toast("Vaka taslağı tarayıcıya kaydedildi.");
-  });
-
   $("#clear-draft-btn")?.addEventListener("click", () => {
     localStorage.removeItem(DRAFT_KEY);
-    $("#case-form").reset();
+    const f = $("#case-form");
+    if (f) {
+      f.reset();
+      delete f.dataset.scenarioId;
+    }
     S.formDtcs = [];
     S.formAttachments = [];
     renderFormDtcChips();
     renderFormAttachments();
-    $("#draft-banner").hidden = true;
+    const bar = $("#active-scenario-bar");
+    if (bar) bar.hidden = true;
+    const banner = $("#draft-banner");
+    if (banner) banner.hidden = true;
+    setWizardStep(1);
     toast("Taslak temizlendi.");
   });
 
   // Submit New Case Form
   $("#case-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    addDtcFromInput();
+    if (!validateWizardStep(1) || !validateWizardStep(2)) return;
+
     const f = e.target;
     const family = f.elements.family.value.trim();
     const kmStr = f.elements.km.value.trim();
     const note = f.elements.note.value.trim();
-
-    $("#err-family").textContent = "";
-    $("#err-km").textContent = "";
-    $("#err-note").textContent = "";
-    $("#form-error").hidden = true;
-
-    let hasErr = false;
-    if (!family) {
-      $("#err-family").textContent = "Lütfen araç modelini girin.";
-      f.elements.family.setAttribute("aria-invalid", "true");
-      hasErr = true;
-    } else f.elements.family.removeAttribute("aria-invalid");
-
-    if (!kmStr || Number.isNaN(Number(kmStr)) || Number(kmStr) < 0) {
-      $("#err-km").textContent = "Geçerli bir kilometre değeri girin.";
-      f.elements.km.setAttribute("aria-invalid", "true");
-      hasErr = true;
-    } else f.elements.km.removeAttribute("aria-invalid");
-
-    if (note.length < 5) {
-      $("#err-note").textContent = "Lütfen en az 5 karakterlik arıza açıklaması yazın.";
-      f.elements.note.setAttribute("aria-invalid", "true");
-      hasErr = true;
-    } else f.elements.note.removeAttribute("aria-invalid");
-
-    if (hasErr) {
-      $("#form-error").textContent = "Lütfen işaretli zorunlu alanları kontrol edin.";
-      $("#form-error").hidden = false;
-      return;
-    }
 
     const payload = {
       vehicle: {
@@ -2180,7 +3122,7 @@ function bindEvents() {
       scenario_id: f.dataset.scenarioId || null,
     };
 
-    await busy($("#submit-case-btn"), "ServicePilot Analiz Ediyor…", async () => {
+    await busy($("#submit-case-btn"), "Analiz Ediliyor…", async () => {
       const created = await api("/cases", { method: "POST", body: payload });
       localStorage.removeItem(DRAFT_KEY);
       f.reset();
@@ -2191,11 +3133,11 @@ function bindEvents() {
       renderFormAttachments();
       upsertCase(created);
       location.hash = `#cases/${created.id}`;
-      toast(`${created.id} oluşturuldu ve ilk triyaj analizi tamamlandı.`);
+      toast(`${created.id} oluşturuldu ve triyaj analizi tamamlandı.`);
     });
   });
 
-  // Evidence Modal Photo Upload & Submit
+  // Evidence Modal Upload
   $("#ev-modal-photo")?.addEventListener("change", (e) => {
     if (e.target.files?.length) {
       handleFileReads([e.target.files[0]], (att) => {
@@ -2209,31 +3151,29 @@ function bindEvents() {
     }
   });
 
+  // Evidence Modal Submit
   $("#evidence-modal-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const modal = $("#evidence-modal");
     const cid = modal.dataset.caseId;
     const evId = $("#ev-modal-select").value;
     const result = $("#ev-modal-result").value.trim();
-    if (!result) {
-      $("#ev-modal-error").textContent = "Lütfen ölçüm veya gözlem sonucunu girin.";
+
+    if (!result || result.length < 2) {
+      $("#ev-modal-error").textContent = "Lütfen en az 2 karakterlik ölçüm veya gözlem sonucu girin.";
       $("#ev-modal-result").focus();
       return;
     }
     $("#ev-modal-error").textContent = "";
 
     await busy($("#ev-modal-submit"), "Yeniden Değerlendiriliyor…", async () => {
-      const c = S.cases.find((x) => x.id === cid);
-      if (c && c.status !== "awaiting_evidence") {
-        await api(`/cases/${cid}/review`, { method: "POST", body: { action: "request_evidence", evidence_id: evId } });
-      }
       const updated = await api(`/cases/${cid}/evidence`, {
         method: "POST",
         body: { evidence_id: evId, result, attachment: S.modalAttachment },
       });
       modal.close();
       upsertCase(updated);
-      toast("Yeni kanıt eklendi ve ServicePilot analizi güncellendi.");
+      toast("Yeni kanıt kaydedildi ve analiz güncellendi.");
     });
   });
 
@@ -2246,8 +3186,8 @@ function bindEvents() {
     const target = $("#ov-modal-target").value;
     const reason = $("#ov-modal-reason").value.trim();
 
-    if (mode === "override" && !reason) {
-      $("#ov-modal-error").textContent = "Yönlendirme değişikliği (override) için kısa bir gerekçe girilmesi zorunludur.";
+    if (mode === "override" && reason.length < 3) {
+      $("#ov-modal-error").textContent = "Yönlendirme değişikliği için en az 3 karakterlik gerekçe zorunludur.";
       $("#ov-modal-reason").focus();
       return;
     }
@@ -2260,11 +3200,11 @@ function bindEvents() {
       });
       modal.close();
       upsertCase(updated);
-      toast(`${cid} için uzman yönlendirme kararı kaydedildi.`);
+      toast(`${cid} için karar kaydedildi.`);
     });
   });
 
-  // Policy Save & Reset
+  // Policy Form Submit & Defaults
   $("#policy-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const values = Object.fromEntries([...new FormData(e.target)].map(([k, v]) => [k, Number(v)]));
@@ -2288,7 +3228,7 @@ function bindEvents() {
 
   // Offline Replay Run
   $("#run-replay")?.addEventListener("click", (e) =>
-    busy(e.currentTarget, "Senaryolar Koşuyor…", async () => {
+    busy(e.currentTarget, "Simülasyon Koşuyor…", async () => {
       const data = await api("/replay", { method: "POST" });
       renderReplayOutput(data);
     })
@@ -2300,21 +3240,53 @@ function bindEvents() {
   bindEvents();
   renderFormDtcChips();
 
-  try {
-    const [cat, st, cases, sc] = await Promise.all([
-      api("/catalog"),
-      api("/settings"),
-      api("/cases"),
-      api("/scenarios"),
-    ]);
-    S.catalog = cat || FALLBACK_CATALOG;
-    S.settings = st || { ...FALLBACK_CATALOG.default_settings };
-    S.scenarios = sc || FALLBACK_SCENARIOS;
-    S.cases = Array.isArray(cases) && cases.length ? cases : await api("/cases/seed", { method: "POST" });
-  } catch {
-    S.offlineMode = true;
-    const savedCases = localStorage.getItem(LOCAL_CASES_KEY);
-    S.cases = savedCases ? JSON.parse(savedCases) : buildFallbackDemoCases(S.settings);
+  // Mode probe: check if backend API is reachable
+  const isStaticHost = location.hostname.endsWith("github.io") || location.protocol === "file:";
+  if (isStaticHost) {
+    S.mode = "local";
+  } else {
+    try {
+      const ping = await fetch("/api/catalog");
+      if (ping.ok && (ping.headers.get("content-type") || "").includes("application/json")) {
+        S.mode = "api";
+      } else {
+        S.mode = "local";
+      }
+    } catch {
+      S.mode = "local";
+    }
+  }
+
+  // Restore saved state or initialize
+  if (S.mode === "local") {
+    try {
+      const savedSettings = localStorage.getItem(LOCAL_SETTINGS_KEY);
+      if (savedSettings) S.settings = { ...FALLBACK_CATALOG.default_settings, ...JSON.parse(savedSettings) };
+      const savedCases = localStorage.getItem(LOCAL_CASES_KEY);
+      if (savedCases) {
+        S.cases = JSON.parse(savedCases);
+        S.userModified = true;
+      } else {
+        S.cases = buildFallbackDemoCases(S.settings);
+      }
+    } catch {
+      S.cases = buildFallbackDemoCases(S.settings);
+    }
+  } else {
+    try {
+      const [cat, st, cases, sc] = await Promise.all([
+        api("/catalog"),
+        api("/settings"),
+        api("/cases"),
+        api("/scenarios"),
+      ]);
+      S.catalog = cat || FALLBACK_CATALOG;
+      S.settings = st || { ...FALLBACK_CATALOG.default_settings };
+      S.scenarios = sc || FALLBACK_SCENARIOS;
+      S.cases = Array.isArray(cases) && cases.length ? cases : await api("/cases/seed", { method: "POST" });
+    } catch (err) {
+      showApiError("API bağlantısı kurulamadı. Lütfen sunucunun çalıştığını kontrol edin.");
+    }
   }
 
   S.selected = S.cases[0]?.id || null;

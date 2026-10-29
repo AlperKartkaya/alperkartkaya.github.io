@@ -9,7 +9,7 @@
 
   --text-primary: #F4F7FA;
   --text-secondary: #96A5B5;
-  --text-muted: #677788;
+  --text-muted: #8E9EB2;
 
   --accent: #40D9C0;
   --accent-ink: #041E19;
@@ -130,6 +130,8 @@ code, pre, .mono {
   height: 100vh;
   z-index: 30;
   padding: var(--sp-4) var(--sp-3);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
@@ -302,8 +304,14 @@ code, pre, .mono {
 
 .workspace-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 6px;
+}
+
+.workspace-actions .btn-subtle {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 10px;
 }
 
 /* Main Column & Topbar */
@@ -1311,6 +1319,106 @@ code, pre, .mono {
   color: var(--info);
 }
 
+.active-scenario-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-control);
+  font-size: 0.83rem;
+}
+
+/* Clickable 3-Step Wizard Stepper */
+.wizard-stepper {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.step-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.step-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.step-tab.active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  border-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.step-tab.completed {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--text-primary);
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-tab.active .step-num,
+.step-tab.completed .step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.review-summary-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 16px;
+  font-size: 0.84rem;
+}
+
+.api-error-banner {
+  background: color-mix(in srgb, var(--critical) 14%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--critical) 50%, var(--border));
+  color: var(--critical);
+  border-radius: var(--radius-control);
+  padding: 10px 16px;
+  margin-bottom: var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
 .new-case-form {
   display: flex;
   flex-direction: column;
@@ -1584,6 +1692,16 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
   flex-direction: column;
 }
 
+.att-thumb-btn {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: var(--bg-main);
+  width: 100%;
+  display: block;
+  cursor: pointer;
+}
+
 .att-thumb {
   width: 100%;
   height: 104px;
@@ -1591,6 +1709,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
   background: var(--bg-main);
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle);
+  display: block;
 }
 
 .att-meta {
@@ -1621,12 +1740,78 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
 .form-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding-top: 8px;
+  flex-wrap: wrap;
+}
+
+.wizard-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
 }
 
 /* SCREEN D: Vaka Detayı (60% Left / 40% Right Decision Panel) */
+.next-action-banner {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-card);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-subtle);
+}
+
+.next-action-banner.is-warning {
+  border-left-color: var(--warning);
+}
+
+.next-action-banner.is-critical {
+  border-left-color: var(--critical);
+}
+
+.next-action-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.next-action-kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-action-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.next-action-reason {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.next-action-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .detail-top-bar {
   display: flex;
   align-items: center;
@@ -2524,6 +2709,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
 
   .detail-right-col {
     position: static;
+    order: -1;
   }
 
   .kpi-grid {
@@ -2550,13 +2736,17 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
     top: 0;
     bottom: 0;
     width: 268px;
-    transform: translateX(-100%);
-    transition: transform 200ms ease;
+    transform: translateX(-105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 200ms ease, visibility 200ms ease;
     box-shadow: var(--shadow-modal);
   }
 
   .sidebar.open {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .sidebar-backdrop {
@@ -2585,6 +2775,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] {
   }
 
   .kpi-grid,
+  .wizard-stepper,
   .form-grid-2,
   .form-grid-3,
   .detail-subgrid,

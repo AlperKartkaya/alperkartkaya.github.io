@@ -93,7 +93,7 @@
             </button>
             <button type="button" class="btn-subtle btn-xs" id="reset-demo-btn" title="Temsili demo vakalarını başlangıç durumuna döndür">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-              <span>Demo Sıfırla</span>
+              <span>Demo Verisini Sıfırla</span>
             </button>
           </div>
         </div>
@@ -105,7 +105,7 @@
       <!-- Top Bar -->
       <header class="topbar">
         <div class="topbar-left">
-          <button type="button" class="icon-btn mobile-only" id="sidebar-open" aria-label="Menüyü aç">
+          <button type="button" class="icon-btn mobile-only" id="sidebar-open" aria-label="Menüyü aç" aria-expanded="false" aria-controls="sidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <nav class="breadcrumb" id="breadcrumb" aria-label="Sayfa konumu">
@@ -123,15 +123,21 @@
             <kbd class="search-kbd" aria-hidden="true">/</kbd>
           </div>
 
-          <div class="env-indicator" id="env-indicator" title="Veriler sentetik demo senaryolarıdır; gerçek müşteri verisi içermez.">
-            <span class="env-dot" aria-hidden="true"></span>
-            <span>Demo Ortamı</span>
+          <div class="env-indicator" id="env-indicator" title="Çalışma modu ve veri kaynağı durumu">
+            <span class="env-dot" id="env-dot" aria-hidden="true"></span>
+            <span id="env-label">Demo Ortamı</span>
           </div>
         </div>
       </header>
 
+      <!-- Global Recoverable Error Banner -->
+      <div class="api-error-banner" id="api-error-banner" role="alert" hidden>
+        <span id="api-error-text">Sunucu bağlantısında geçici bir hata oluştu. Girilen verileriniz korundu.</span>
+        <button type="button" class="btn btn-subtle btn-xs" id="api-error-dismiss">Kapat</button>
+      </div>
+
       <!-- Workspace Panels -->
-      <main id="main" class="workspace-content">
+      <main id="main" class="workspace-content" tabindex="-1">
         <!-- SCREEN A: Genel Bakış -->
         <section data-panel="overview" class="screen-panel" id="panel-overview">
           <div class="overview-hero">
@@ -154,7 +160,7 @@
               <div class="section-header">
                 <div>
                   <h2>Öncelikli Vakalar</h2>
-                  <p class="section-subtitle">Müdahale, kanıt tamamlanması veya uzman onayı bekleyen vakalar</p>
+                  <p class="section-subtitle">Kanıt tamamlanması, yönlendirme teyidi veya uzman kararı bekleyen vakalar</p>
                 </div>
                 <a href="#cases" class="btn btn-secondary btn-sm">Tüm Vakaları Gör</a>
               </div>
@@ -182,7 +188,7 @@
           <div class="page-header">
             <div>
               <h1>Vakalar</h1>
-              <p class="page-subtitle">Sahadan iletilen servis vakalarını kanıt durumuna, önceliğe ve hedef uzmanlığa göre inceleyin.</p>
+              <p class="page-subtitle">Sahadan iletilen servis vakalarını kanıt durumuna, önceliğe ve hedef uzmanlığa göre yönetin.</p>
             </div>
             <div class="page-header-actions">
               <a href="#new" class="btn btn-primary">
@@ -202,26 +208,26 @@
             </div>
 
             <div class="status-filters" id="status-filters" role="tablist" aria-label="Vaka durumu filtreleri">
-              <button type="button" role="tab" class="filter-pill active" data-filter="all" aria-selected="true">Tümü</button>
-              <button type="button" role="tab" class="filter-pill" data-filter="inspecting" aria-selected="false">İnceleniyor</button>
-              <button type="button" role="tab" class="filter-pill" data-filter="awaiting_evidence" aria-selected="false">Kanıt Bekleniyor</button>
-              <button type="button" role="tab" class="filter-pill" data-filter="expert_review" aria-selected="false">Uzman Onayında</button>
-              <button type="button" role="tab" class="filter-pill" data-filter="routed" aria-selected="false">Yönlendirildi</button>
+              <button type="button" role="tab" class="filter-pill active" data-filter="all" aria-selected="true" aria-controls="cases-table-container">Tümü</button>
+              <button type="button" role="tab" class="filter-pill" data-filter="inspecting" aria-selected="false" aria-controls="cases-table-container">İnceleniyor</button>
+              <button type="button" role="tab" class="filter-pill" data-filter="awaiting_evidence" aria-selected="false" aria-controls="cases-table-container">Kanıt Bekleniyor</button>
+              <button type="button" role="tab" class="filter-pill" data-filter="expert_review" aria-selected="false" aria-controls="cases-table-container">Uzman Onayında</button>
+              <button type="button" role="tab" class="filter-pill" data-filter="routed" aria-selected="false" aria-controls="cases-table-container">Yönlendirildi</button>
             </div>
           </div>
 
-          <div id="cases-table-container" class="cases-table-container"></div>
+          <div id="cases-table-container" class="cases-table-container" role="region" aria-live="polite"></div>
         </section>
 
-        <!-- SCREEN C: Yeni Vaka -->
+        <!-- SCREEN C: Yeni Vaka (3-Step Selectable Wizard) -->
         <section data-panel="new" class="screen-panel" id="panel-new" hidden>
           <div class="page-header">
             <div>
               <h1>Yeni Vaka</h1>
-              <p class="page-subtitle">Araç bilgilerini, şikayet açıklamasını ve mevcut kanıtları girerek ServicePilot triyaj analizini başlatın.</p>
+              <p class="page-subtitle">Üç adımda araç, şikayet ve mevcut saha kanıtlarını girerek triyaj analizini başlatın.</p>
             </div>
             <div class="page-header-actions">
-              <a href="#cases" class="btn btn-secondary">Vakalara Dön</a>
+              <a href="#cases" class="btn btn-secondary btn-sm">Vakalara Dön</a>
             </div>
           </div>
 
@@ -229,33 +235,66 @@
           <div class="card scenario-bar">
             <div class="scenario-bar-head">
               <div>
-                <span class="badge badge-info">Demo Ortamı</span>
-                <strong>Hazır Demo Senaryosu ile Doldur</strong>
-                <span class="text-secondary">Formu örnek bir servis vakasıyla tek tıkla doldurabilir veya doğrudan analiz edebilirsiniz.</span>
+                <span class="badge badge-info">İsteğe Bağlı Demo Senaryosu</span>
+                <strong>Örnek Senaryo ile Taslağı Doldur</strong>
+                <span class="text-secondary">Bir senaryo seçerek formu düzenlenebilir olarak doldurabilirsiniz.</span>
               </div>
-              <button type="button" class="btn btn-subtle btn-sm" id="toggle-scenarios-btn" aria-expanded="false">
-                Senaryoları Göster (13)
+              <button type="button" class="btn btn-subtle btn-sm" id="toggle-scenarios-btn" aria-expanded="false" aria-controls="all-scenarios-drawer">
+                Tüm Senaryolar (13)
               </button>
             </div>
             <div class="scenario-pills" id="quick-scenarios"></div>
             <div class="scenario-grid-drawer" id="all-scenarios-drawer" hidden></div>
+
+            <div class="active-scenario-bar" id="active-scenario-bar" hidden>
+              <div>
+                <span class="badge badge-accent">Seçili Senaryo</span>
+                <strong id="active-scenario-title">—</strong>
+              </div>
+              <button type="button" class="btn btn-subtle btn-xs" id="clear-scenario-btn">Senaryo Seçimini Kaldır</button>
+            </div>
           </div>
 
           <div class="draft-banner" id="draft-banner" hidden>
             <div class="draft-banner-text">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-              <span>Kaydedilmiş vaka taslağı yüklendi.</span>
+              <span id="draft-banner-msg">Kaydedilmiş vaka taslağı yüklendi.</span>
             </div>
             <button type="button" class="btn btn-subtle btn-xs" id="clear-draft-btn">Taslağı Temizle</button>
           </div>
 
+          <!-- Clickable 3-Step Stepper -->
+          <nav class="wizard-stepper" id="wizard-stepper" aria-label="Yeni vaka oluşturma adımları">
+            <button type="button" class="step-tab active" data-step-target="1" id="step-btn-1" aria-current="step">
+              <span class="step-num">1</span>
+              <span class="step-label">
+                <strong>Araç</strong>
+                <small>Model, KM ve lokasyon</small>
+              </span>
+            </button>
+            <button type="button" class="step-tab" data-step-target="2" id="step-btn-2">
+              <span class="step-num">2</span>
+              <span class="step-label">
+                <strong>Şikayet</strong>
+                <small>Arıza notu ve DTC kodları</small>
+              </span>
+            </button>
+            <button type="button" class="step-tab" data-step-target="3" id="step-btn-3">
+              <span class="step-num">3</span>
+              <span class="step-label">
+                <strong>Kanıt ve Kontrol</strong>
+                <small>Fotoğraf, ölçüm ve onay</small>
+              </span>
+            </button>
+          </nav>
+
           <form id="case-form" class="new-case-form" novalidate>
-            <!-- Section 1: Araç Bilgileri -->
-            <section class="card form-section" aria-labelledby="sec-vehicle-h">
+            <!-- STEP 1: Araç Bilgileri -->
+            <section class="card form-section" id="form-step-1" aria-labelledby="sec-vehicle-h">
               <div class="form-section-head">
-                <span class="section-step">1</span>
+                <span class="section-step" aria-hidden="true">1</span>
                 <div>
-                  <h2 id="sec-vehicle-h">Araç Bilgileri</h2>
+                  <h2 id="sec-vehicle-h" tabindex="-1">Araç Bilgileri</h2>
                   <p>Aracın model ailesi, tahrik sistemi, kilometresi ve servis noktası bilgilerini girin.</p>
                 </div>
               </div>
@@ -263,7 +302,7 @@
               <div class="form-grid-2">
                 <div class="field">
                   <label for="family">Araç modeli <span class="req-tag">Zorunlu</span></label>
-                  <input id="family" name="family" required list="families" placeholder="Örn: Isuzu Citiport 12 veya Isuzu NPR 10" autocomplete="off">
+                  <input id="family" name="family" required minlength="2" maxlength="80" list="families" placeholder="Örn: Isuzu Citiport 12 veya Isuzu NPR 10" autocomplete="off" aria-describedby="err-family">
                   <datalist id="families">
                     <option value="Isuzu NPR 10"></option>
                     <option value="Isuzu N-Wide"></option>
@@ -274,22 +313,24 @@
                     <option value="Isuzu Novociti Volt"></option>
                     <option value="Isuzu Citivolt 12"></option>
                   </datalist>
-                  <span class="field-hint">Model seçildiğinde elektrikli araçlar için tahrik tipi otomatik güncellenir.</span>
-                  <span class="field-error" id="err-family"></span>
+                  <span class="field-hint">Elektrikli modellerde tahrik sistemi otomatik seçilir.</span>
+                  <span class="field-error" id="err-family" role="alert"></span>
                 </div>
 
                 <div class="field">
                   <label for="vin">VIN / Araç kimlik numarası <span class="opt-tag">İsteğe bağlı</span></label>
-                  <input id="vin" name="vin" class="mono" maxlength="24" placeholder="Örn: NLNC12000R0041892" autocapitalize="characters" spellcheck="false">
-                  <span class="field-hint">17 haneli şasi numarası veya filo plaka/araç kodu.</span>
+                  <input id="vin" name="vin" class="mono" maxlength="24" placeholder="Örn: NLNC12000R0041892" autocapitalize="characters" spellcheck="false" aria-describedby="err-vin">
+                  <span class="field-hint">Şasi numarası veya filo araç kodu (en fazla 24 karakter).</span>
+                  <span class="field-error" id="err-vin" role="alert"></span>
                 </div>
               </div>
 
               <div class="form-grid-3">
                 <div class="field">
                   <label for="km">Kilometre <span class="req-tag">Zorunlu</span></label>
-                  <input id="km" name="km" type="number" min="0" max="5000000" required inputmode="numeric" placeholder="Örn: 184000" value="145000">
-                  <span class="field-error" id="err-km"></span>
+                  <input id="km" name="km" type="number" min="0" max="5000000" step="1" required inputmode="numeric" placeholder="Örn: 184000" value="145000" aria-describedby="err-km">
+                  <span class="field-hint">0 ile 5.000.000 km arası tam sayı.</span>
+                  <span class="field-error" id="err-km" role="alert"></span>
                 </div>
 
                 <div class="field">
@@ -308,35 +349,40 @@
 
                 <div class="field">
                   <label for="location">Servis / Lokasyon <span class="opt-tag">İsteğe bağlı</span></label>
-                  <input id="location" name="location" placeholder="Örn: Bursa Yetkili Servis">
+                  <input id="location" name="location" maxlength="120" placeholder="Örn: Bursa Yetkili Servis">
                 </div>
+              </div>
+
+              <div class="form-footer">
+                <button type="button" class="btn btn-secondary" data-save-draft>Taslak Olarak Kaydet</button>
+                <button type="button" class="btn btn-primary" data-next-step="2">Devam: Şikayet Bilgileri →</button>
               </div>
             </section>
 
-            <!-- Section 2: Arıza Açıklaması -->
-            <section class="card form-section" aria-labelledby="sec-problem-h">
+            <!-- STEP 2: Arıza Açıklaması -->
+            <section class="card form-section" id="form-step-2" aria-labelledby="sec-problem-h" hidden>
               <div class="form-section-head">
-                <span class="section-step">2</span>
+                <span class="section-step" aria-hidden="true">2</span>
                 <div>
-                  <h2 id="sec-problem-h">Arıza Açıklaması</h2>
+                  <h2 id="sec-problem-h" tabindex="-1">Şikayet ve Arıza Açıklaması</h2>
                   <p>Teknisyen gözlemini, arıza kodlarını (DTC) ve yakın tarihli onarım geçmişini belirtin.</p>
                 </div>
               </div>
 
               <div class="field">
-                <label for="note">Teknisyen arıza açıklaması <span class="req-tag">Zorunlu</span></label>
-                <textarea id="note" name="note" required minlength="5" rows="4" placeholder="Örn: Göstergede seyir halinde aynı anda ABS ve şanzıman uyarıları yandı, birkaç saniye sonra söndü. Araç normal sürülüyor…"></textarea>
-                <span class="field-hint">Şikayetin ne zaman, hangi koşulda (ilk marş, yokuş, şarj, seyir) oluştuğunu yazın.</span>
-                <span class="field-error" id="err-note"></span>
+                <label for="note">Teknisyen arıza açıklaması <span class="req-tag">Zorunlu (5–4000 karakter)</span></label>
+                <textarea id="note" name="note" required minlength="5" maxlength="4000" rows="4" placeholder="Örn: Göstergede seyir halinde aynı anda ABS ve şanzıman uyarıları yandı, birkaç saniye sonra söndü. Araç normal sürülüyor…" aria-describedby="err-note"></textarea>
+                <span class="field-hint">Şikayetin hangi koşulda (ilk marş, yokuş, şarj, seyir) oluştuğunu belirtin.</span>
+                <span class="field-error" id="err-note" role="alert"></span>
               </div>
 
               <div class="form-grid-2">
                 <div class="field">
-                  <label for="dtc-input">DTC arıza kodları <span class="opt-tag">İsteğe bağlı</span></label>
+                  <label for="dtc-input">DTC arıza kodları <span class="opt-tag">İsteğe bağlı (en fazla 20 kod)</span></label>
                   <div class="dtc-input-box" id="dtc-box">
                     <div class="dtc-chips" id="dtc-chips" aria-live="polite"></div>
                     <div class="dtc-entry-row">
-                      <input id="dtc-input" type="text" class="mono" placeholder="Kod yazıp Enter'a basın (Örn: U0100, P0562)" autocapitalize="characters" spellcheck="false">
+                      <input id="dtc-input" type="text" class="mono" maxlength="16" placeholder="Kod yazıp Enter'a basın (Örn: U0100)" autocapitalize="characters" spellcheck="false">
                       <button type="button" class="btn btn-secondary btn-sm" id="add-dtc-btn">+ Ekle</button>
                     </div>
                   </div>
@@ -352,27 +398,33 @@
 
                 <div class="field">
                   <label for="repairs">İlgili servis geçmişi / Son onarımlar <span class="opt-tag">İsteğe bağlı</span></label>
-                  <textarea id="repairs" name="repairs" rows="3" placeholder="Örn: Geçen ay gösterge paneli değişti; 90.000 km bakımı yapıldı."></textarea>
+                  <textarea id="repairs" name="repairs" maxlength="2000" rows="3" placeholder="Örn: Geçen ay gösterge paneli değişti; 90.000 km bakımı yapıldı."></textarea>
                   <span class="field-hint">Yakın zamanda değişen parçalar veya tekrarlayan şikayet bilgisi.</span>
                 </div>
               </div>
+
+              <div class="form-footer">
+                <button type="button" class="btn btn-secondary" data-prev-step="1">← Geri: Araç</button>
+                <button type="button" class="btn btn-secondary" data-save-draft>Taslak Olarak Kaydet</button>
+                <button type="button" class="btn btn-primary" data-next-step="3">Devam: Kanıt ve Kontrol →</button>
+              </div>
             </section>
 
-            <!-- Section 3: Kanıtlar -->
-            <section class="card form-section" aria-labelledby="sec-evidence-h">
+            <!-- STEP 3: Kanıtlar ve Kontrol Özeti -->
+            <section class="card form-section" id="form-step-3" aria-labelledby="sec-evidence-h" hidden>
               <div class="form-section-head">
-                <span class="section-step">3</span>
+                <span class="section-step" aria-hidden="true">3</span>
                 <div>
-                  <h2 id="sec-evidence-h">Kanıtlar</h2>
-                  <p>Mevcut saha fotoğraflarını ve ilk ölçüm/gözlem bulgularını ekleyin.</p>
+                  <h2 id="sec-evidence-h" tabindex="-1">Kanıtlar ve Başvuru Kontrolü</h2>
+                  <p>Mevcut saha fotoğraflarını veya ilk ölçümleri ekleyin (isteğe bağlı) ve özeti kontrol ederek analizi başlatın.</p>
                 </div>
               </div>
 
               <div class="form-grid-2">
                 <div class="field">
-                  <label for="photo-input">Fotoğraf ve görsel kanıtlar <span class="opt-tag">İsteğe bağlı</span></label>
+                  <label for="photo-input">Referans fotoğraflar <span class="opt-tag">İsteğe bağlı (en fazla 4 görsel, ≤500 KB)</span></label>
                   <div class="dropzone" id="photo-dropzone" tabindex="0" role="button" aria-label="Fotoğraf yüklemek için tıklayın veya dosyaları sürükleyin">
-                    <input type="file" id="photo-input" accept="image/*" multiple hidden>
+                    <input type="file" id="photo-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple hidden>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                       <circle cx="8.5" cy="8.5" r="1.5"></circle>
@@ -380,33 +432,34 @@
                     </svg>
                     <div class="dropzone-text">
                       <strong>Fotoğrafları buraya sürükleyin veya dosya seçin</strong>
-                      <span>Konnektör, gösterge ekranı, sızıntı veya parça durumu (PNG, JPG, SVG)</span>
+                      <span>PNG, JPG, WEBP veya SVG · Uzman referansı olarak kaydedilir (otomatik görüntü analizi yapılmaz).</span>
                     </div>
                   </div>
+                  <span class="field-error" id="err-photo" role="alert"></span>
                   <div class="attachment-previews" id="form-attachments-list"></div>
-                  <span class="field-hint">Not: Görseller uzman incelemesi için vakaya eklenir; otomatik karar motoru yapılandırılmış metin ve ölçüm kanıtlarını değerlendirir.</span>
                 </div>
 
                 <div class="field">
-                  <label for="initial_measurements">İlk ölçümler ve teknisyen gözlemleri <span class="opt-tag">İsteğe bağlı</span></label>
-                  <textarea id="initial_measurements" name="initial_measurements" rows="5" placeholder="Örn: Kontak kapalı akü voltajı 24.6V ölçüldü. Motor yağ ve antifriz seviyesi normal."></textarea>
+                  <label for="initial_measurements">İlk ölçümler ve gözlemler <span class="opt-tag">İsteğe bağlı</span></label>
+                  <textarea id="initial_measurements" name="initial_measurements" maxlength="2000" rows="4" placeholder="Örn: Kontak kapalı akü voltajı 24.6V ölçüldü. Motor yağ ve antifriz seviyesi normal."></textarea>
                   <span class="field-hint">Halihazırda yapılmış olan ölçümleri yazarsanız sistem aynı kanıtı tekrar istemez.</span>
                 </div>
               </div>
+
+              <!-- Compact Pre-submission Summary -->
+              <div class="review-summary-box" id="form-review-summary" aria-live="polite"></div>
+
+              <div class="form-error-banner" id="form-error" role="alert" hidden></div>
+
+              <div class="form-footer">
+                <button type="button" class="btn btn-secondary" data-prev-step="2">← Geri: Şikayet</button>
+                <button type="button" class="btn btn-secondary" id="save-draft-btn" data-save-draft>Taslak Olarak Kaydet</button>
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-case-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  <span>Vakayı Analiz Et</span>
+                </button>
+              </div>
             </section>
-
-            <div class="form-error-banner" id="form-error" role="alert" hidden></div>
-
-            <div class="form-footer">
-              <button type="button" class="btn btn-secondary" id="save-draft-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                <span>Taslak Olarak Kaydet</span>
-              </button>
-              <button type="submit" class="btn btn-primary btn-lg" id="submit-case-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                <span>Vakayı Analiz Et</span>
-              </button>
-            </div>
           </form>
         </section>
 
@@ -423,34 +476,34 @@
               <p class="page-subtitle">Güvenlik kritik veya belirsiz vakaları değerlendirin, yönlendirme önerilerini onaylayın veya gerekçeli olarak değiştirin.</p>
             </div>
             <div class="view-tabs" role="tablist" aria-label="Uzman inceleme ve yönetim görünümleri">
-              <button type="button" role="tab" class="tab-btn active" data-review-tab="queue" aria-selected="true">
+              <button type="button" role="tab" class="tab-btn active" id="tab-btn-queue" data-review-tab="queue" aria-selected="true" aria-controls="review-tab-queue">
                 İnceleme Kuyruğu
                 <span class="tab-count" id="tab-review-count">0</span>
               </button>
-              <button type="button" role="tab" class="tab-btn" data-review-tab="teams" aria-selected="false">
+              <button type="button" role="tab" class="tab-btn" id="tab-btn-teams" data-review-tab="teams" aria-selected="false" aria-controls="review-tab-teams">
                 Uzman Ekip Kuyrukları
               </button>
-              <button type="button" role="tab" class="tab-btn" data-review-tab="policy" aria-selected="false">
+              <button type="button" role="tab" class="tab-btn" id="tab-btn-policy" data-review-tab="policy" aria-selected="false" aria-controls="review-tab-policy">
                 RAEP Politika &amp; Simülasyon
               </button>
             </div>
           </div>
 
           <!-- Subview 1: Expert Review Queue (Screen E) -->
-          <div id="review-tab-queue" class="review-subpanel">
+          <div id="review-tab-queue" class="review-subpanel" role="tabpanel" aria-labelledby="tab-btn-queue">
             <div id="expert-review-list"></div>
           </div>
 
           <!-- Subview 2: Specialist Team Queues (FR-11) -->
-          <div id="review-tab-teams" class="review-subpanel" hidden>
+          <div id="review-tab-teams" class="review-subpanel" role="tabpanel" aria-labelledby="tab-btn-teams" hidden>
             <div class="callout-bar">
-              <span><strong>Hiyerarşik Uzmanlık Kuyrukları:</strong> Otomatik veya uzman onayıyla yönlendirilen vakalar hedef ekibe düşer. Yaprak uzmanlıkta yeterli güven oluşmadığında vakalar güvenli üst düğüme (hiyerarşik fallback) atanır.</span>
+              <span><strong>Hiyerarşik Uzmanlık Kuyrukları:</strong> Otomatik önerilen (`Onay Bekliyor`) veya insan onayıyla kesinleşen (`Yönlendirildi`) vakalar hedef ekibe düşer. Yaprakta yeterli güven yoksa güvenli üst düğüme (hiyerarşik fallback) atanır.</span>
             </div>
             <div class="queues-grid" id="queues-grid"></div>
           </div>
 
           <!-- Subview 3: RAEP Policy & Replay (FR-10, FR-13) -->
-          <div id="review-tab-policy" class="review-subpanel" hidden>
+          <div id="review-tab-policy" class="review-subpanel" role="tabpanel" aria-labelledby="tab-btn-policy" hidden>
             <div class="policy-replay-grid">
               <section class="card">
                 <div class="section-header">
@@ -483,12 +536,12 @@ U(e)     = L(s) · (err(s) − err'(e)) − λ · C(e)</pre>
               <div class="section-header">
                 <div>
                   <h2>Offline Replay Değerlendirmesi</h2>
-                  <p class="section-subtitle">Sentetik demo senaryolarını güncel RAEP ayarlarıyla koşturarak Baseline B (Sabit Checklist) ve Baseline C (Jev Tek-Shot) ile karşılaştırın.</p>
+                  <p class="section-subtitle">13 sentetik senaryoyu güncel RAEP politika ayarlarıyla çalıştırarak Baseline B (Sabit Checklist) ve Baseline C (Jev Tek-Shot) ile karşılaştırın.</p>
                 </div>
                 <button type="button" class="btn btn-primary" id="run-replay">Simülasyonu Çalıştır</button>
               </div>
               <div class="callout-bar warning-bar">
-                Senaryolar demo için yazılmış <strong>sentetik</strong> vakalardır; gerçek müşteri verisi değildir ve üretim doğruluk iddiası taşımaz.
+                <strong>Çevrimdışı / Sentetik Değerlendirme:</strong> Senaryolar demo için yazılmış sentetik vakalardır; beklenen etiketler yalnız doğruluk/recall puanlamasında kullanılır, karar motoruna girdi olarak verilmez.
               </div>
               <div id="replay-out"></div>
             </section>
@@ -503,7 +556,7 @@ U(e)     = L(s) · (err(s) − err'(e)) − λ · C(e)</pre>
     <form class="modal-box" id="evidence-modal-form" method="dialog" novalidate>
       <div class="modal-head">
         <div>
-          <span class="badge badge-accent" id="ev-modal-badge">Öncelikli Kanıt Girişi</span>
+          <span class="badge badge-accent" id="ev-modal-badge">Kanıt Girişi</span>
           <h2 id="ev-modal-title">Kanıt Ekle</h2>
         </div>
         <button type="button" class="icon-btn" data-close-modal="evidence-modal" aria-label="Kapat">
@@ -511,25 +564,28 @@ U(e)     = L(s) · (err(s) − err'(e)) − λ · C(e)</pre>
         </button>
       </div>
       <div class="modal-body">
+        <div class="callout-bar" id="ev-modal-requested-banner" style="margin-bottom:0"></div>
+
         <div class="field">
-          <label for="ev-modal-select">Kanıt türü</label>
+          <label for="ev-modal-select">Uygulanabilir kanıt / kontrol türü</label>
           <select id="ev-modal-select" name="evidence_id"></select>
           <span class="field-hint" id="ev-modal-meta"></span>
         </div>
 
         <div class="field">
           <div class="field-label-row">
-            <label for="ev-modal-result">Ölçüm / Gözlem sonucu <span class="req-tag">Zorunlu</span></label>
-            <button type="button" class="btn btn-subtle btn-xs" id="ev-modal-fill-btn" hidden>Örnek Teknisyen Cevabını Doldur</button>
+            <label for="ev-modal-result">Ölçüm / Gözlem sonucu <span class="req-tag">Zorunlu (2–2000 karakter)</span></label>
+            <button type="button" class="btn btn-subtle btn-xs" id="ev-modal-fill-btn" hidden>Senaryo Cevabını Doldur</button>
           </div>
-          <textarea id="ev-modal-result" name="result" rows="3" required placeholder="Yapılan ölçüm değerini veya görsel inceleme bulgusunu yazın…"></textarea>
-          <span class="field-error" id="ev-modal-error"></span>
+          <textarea id="ev-modal-result" name="result" rows="3" required minlength="2" maxlength="2000" placeholder="Yapılan ölçüm değerini veya görsel inceleme bulgusunu yazın…" aria-describedby="ev-modal-error"></textarea>
+          <span class="field-hint" id="ev-modal-scenario-hint" hidden></span>
+          <span class="field-error" id="ev-modal-error" role="alert"></span>
         </div>
 
         <div class="field">
-          <label for="ev-modal-photo">Görsel kanıt / Fotoğraf ekle <span class="opt-tag">İsteğe bağlı</span></label>
+          <label for="ev-modal-photo">Görsel referans ekle <span class="opt-tag">İsteğe bağlı (≤500 KB)</span></label>
           <div class="compact-upload">
-            <input type="file" id="ev-modal-photo" accept="image/*">
+            <input type="file" id="ev-modal-photo" accept="image/png,image/jpeg,image/webp,image/svg+xml">
           </div>
           <div id="ev-modal-photo-preview" class="attachment-previews"></div>
         </div>
@@ -557,13 +613,13 @@ U(e)     = L(s) · (err(s) − err'(e)) − λ · C(e)</pre>
         <p class="text-secondary" id="ov-modal-desc" style="margin-top:0"></p>
         <div class="field">
           <label for="ov-modal-target">Hedef uzman ekip <span class="req-tag">Zorunlu</span></label>
-          <select id="ov-modal-target" name="target" required></select>
+          <select id="ov-modal-target" name="target" required aria-describedby="ov-modal-error"></select>
         </div>
         <div class="field">
           <label for="ov-modal-reason">Karar / Değişiklik gerekçesi <span class="req-tag" id="ov-reason-req">Zorunlu</span></label>
-          <textarea id="ov-modal-reason" name="reason" rows="3" placeholder="Örn: CAN direnç ölçümü ve şema incelemesi sonrası ECU haberleşme ekibine devredildi…"></textarea>
-          <span class="field-hint">Bu açıklama vakanın karar geçmişine (denetim izi) kalıcı olarak kaydedilir.</span>
-          <span class="field-error" id="ov-modal-error"></span>
+          <textarea id="ov-modal-reason" name="reason" rows="3" maxlength="1000" placeholder="Örn: Sigorta tablası F18 incelendi, düşük voltaj elektrik ekibine devredildi…" aria-describedby="ov-modal-error"></textarea>
+          <span class="field-hint">Bu gerekçe vakanın karar geçmişine (denetim izi) kalıcı olarak kaydedilir.</span>
+          <span class="field-error" id="ov-modal-error" role="alert"></span>
         </div>
       </div>
       <div class="modal-foot">
