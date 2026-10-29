@@ -739,9 +739,9 @@
       <i class="fas fa-route"></i>
       Inference-Time Latent Trajectory Intervention &middot; Looped Language Models
     </span>
-    <h1 class="title pub-title">TEBDİL: Cooperative Latent Excursions<br>for Recurrent Reasoning</h1>
+    <h1 class="title pub-title">TEBDİL: Self-Directed &amp; Cooperative Latent Excursions<br>for Recurrent Reasoning</h1>
     <p class="pub-subtitle">
-      Evaluating Shared Recurrent Transition Operators Along Cross-Trajectory Midpoints Without Retraining
+      Learned Inference-Time Meta-Control Over Cross-Trajectory Midpoint Excursions, Multi-Donor Selection, and Early Exit in Looped Language Models
     </p>
 
     <div class="pub-venue">
@@ -754,7 +754,7 @@
     </div>
 
     <div class="pub-affil">
-      <span>Rev: <code>3aaa2224253a92ca45cf2e3d427c360e1ef9c93d</code> &nbsp;&middot;&nbsp; 634 Real Model Trace Executions &nbsp;&middot;&nbsp; 28/28 Invariant Tests Passing</span>
+      <span>Rev: <code>3aaa2224253a92ca45cf2e3d427c360e1ef9c93d</code> &nbsp;&middot;&nbsp; 1,408 Real Model Trace Executions &nbsp;&middot;&nbsp; 31/31 Unit Tests &amp; 12/12 Audit Checks Passing</span>
     </div>
 
     <div class="pub-links">
@@ -762,46 +762,46 @@
         <span class="icon"><i class="fas fa-play-circle"></i></span><span>Interactive Simulator</span>
       </a>
       <a href="#architecture" class="pub-btn">
-        <span class="icon"><i class="fas fa-project-diagram"></i></span><span>Mechanism &amp; Math</span>
+        <span class="icon"><i class="fas fa-project-diagram"></i></span><span>Mechanism &amp; Controller</span>
       </a>
       <a href="#theory" class="pub-btn brand-theory">
         <span class="icon"><i class="fas fa-bolt"></i></span><span>Curvature Theory ($C_t$)</span>
       </a>
       <a href="#results" class="pub-btn brand-results">
-        <span class="icon"><i class="fas fa-chart-line"></i></span><span>Phase 1&ndash;4 Results</span>
+        <span class="icon"><i class="fas fa-chart-line"></i></span><span>Phase 1&ndash;8 Results</span>
       </a>
       <a href="#case-study" class="pub-btn brand-case">
         <span class="icon"><i class="fas fa-microscope"></i></span><span>Case Replays</span>
       </a>
       <a href="#roadmap" class="pub-btn brand-roadmap">
-        <span class="icon"><i class="fas fa-flag-checkered"></i></span><span>Roadmap to Paper</span>
+        <span class="icon"><i class="fas fa-flag-checkered"></i></span><span>Audit &amp; Roadmap</span>
       </a>
       <a href="#bibtex" class="pub-btn">
         <span class="icon"><i class="fas fa-quote-right"></i></span><span>Cite</span>
       </a>
     </div>
 
-    <!-- Headline metrics driven by real Phase 4 & Phase 3 results -->
+    <!-- Headline metrics driven by real Phase 7-8, Phase 5, and Phase 3 results -->
     <div class="metrics-strip">
       <div class="metric-card">
         <div class="metric-num" data-target="+5.56%">+5.56%</div>
         <div class="metric-label">Held-Out Test Accuracy Gain</div>
-        <div class="metric-sub">E1 &amp; E2 (27.78%) vs S0 &amp; P0 (22.22%)</div>
+        <div class="metric-sub">E3_mlp / E2 / E1 (27.78%) vs S0 &amp; P0 (22.22%)</div>
       </div>
       <div class="metric-card">
-        <div class="metric-num" data-target="2 / 0">2 / 0</div>
-        <div class="metric-label">Rescued vs. Degraded (Test E2)</div>
-        <div class="metric-sub">7.14% Rescue Rate &middot; 0.0% Degradation</div>
+        <div class="metric-num" data-target="11.08">11.08</div>
+        <div class="metric-label">Mean Recurrent Calls (E3_mlp)</div>
+        <div class="metric-sub">&minus;24.5% Compute vs E1 (14.67) &middot; 0% Degradation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-num" data-target="33.33%">33.33%</div>
+        <div class="metric-label">3-Branch Donor Policy (D_nearest)</div>
+        <div class="metric-sub">+11.11% vs S0 &middot; Matches Post-Hoc Oracle D_oracle</div>
       </div>
       <div class="metric-card">
         <div class="metric-num" data-target="42.06">42.06</div>
         <div class="metric-label">Mean Nonlinear Curvature $\|C_2\|_F$</div>
-        <div class="metric-sub">37.1% of Midpoint Update Norm</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-num" data-target="14.03">14.03</div>
-        <div class="metric-label">Mean Recurrent Block Calls (E2)</div>
-        <div class="metric-sub">Saves 4.4% compute vs Fixed E1 (14.67)</div>
+        <div class="metric-sub">1,408 Real Trajectories &middot; 12/12 Audit Checks Passed</div>
       </div>
     </div>
   </div>
@@ -959,18 +959,21 @@
         and importing the resulting local update vector back into its own state?</i>
       </p>
       <p>
-        We introduce <b>TEBDİL</b> (<i>Cooperative Latent Excursions for Recurrent Reasoning</i>), a training-free, zero-parameter
-        inference-time intervention. At step $t{=}1$, TEBDİL forks a full-sequence norm-bounded perturbed donor trajectory $H_1^B$.
-        At step $t{=}2$, it constructs the midpoint $H_2^{\mathrm{visit}} = (1-\alpha)H_2^A + \alpha H_2^B$, evaluates the shared
-        recurrent block once at $H_2^{\mathrm{visit}}$ to extract the local transition vector $V_2^{\mathrm{visit}} = F_{\theta,2}(H_2^{\mathrm{visit}}) - H_2^{\mathrm{visit}}$,
-        clips its relative Frobenius norm to a trust region, and updates the primary branch via $H_3^{A'} = H_2^A + (1-\beta)V_2^A + \beta \tilde{V}_2^{\mathrm{visit}}$.
-        Across <b>634 real model trace executions</b>, TEBDİL demonstrates that:
+        We introduce <b>TEBDİL</b> (<i>Self-Directed &amp; Cooperative Latent Excursions for Recurrent Reasoning</i>), an inference-time
+        latent relocation framework. At step $t{=}1$, TEBDİL forks norm-bounded perturbed donor trajectory states ($H_1^B, H_1^C$).
+        At step $t{=}2$, a lightweight learned meta-controller $\pi_\psi(s_2)$ decides over a discrete action space
+        $\mathcal{A} = \{\text{CONTINUE}, \text{EXCURSION}(d, \alpha, \beta), \text{EXIT}\}$ using strictly label-free latent geometry
+        and readout uncertainty features. When an excursion is selected, TEBDİL constructs $H_2^{\mathrm{visit}} = (1-\alpha)H_2^A + \alpha H_2^d$,
+        evaluates $F_{\theta,2}$ to extract $V_2^{\mathrm{visit}}$, projects/clips within a trust region, and returns via $H_3^{A'} = H_2^A + (1-\beta)V_2^A + \beta \tilde{V}_2^{\mathrm{visit}}$.
+        Across <b>1,408 real model trace executions</b> (Phases 1&ndash;8), TEBDİL demonstrates that:
         (1) full-sequence perturbation ($\eta{=}0.25$) overcomes the $10\times$ single-step contraction of Ouro's 96 Sandwich RMSNorm layers;
         (2) evaluating $F_{\theta,2}$ at the midpoint generates substantial <b>nonlinear excursion curvature</b>
-        <span class="highlight-pill curv">$\|C_2\|_F = 42.06$</span> that is absent in linear update mixing ($M_1$); and
-        (3) our label-free adaptive policy ($E_2$) improves held-out test accuracy by
-        <span class="highlight-pill acc">+5.56% over $S_0$/$P_0$</span> with
-        <span class="highlight-pill speed">0 degradations</span>, including emergent cooperative rescues where both independent branches fail.
+        <span class="highlight-pill curv">$\|C_2\|_F = 42.06$</span> ($44\%$ concentrated in the top-$25\%$ singular subspace via <code>E1_subspace</code>);
+        (3) among 3-branch donor pools, <b>nearest trust-region donor selection</b> (<code>D_nearest</code>) achieves
+        <span class="highlight-pill acc">33.33% accuracy (+11.11% vs $S_0$)</span>, matching the post-hoc oracle <code>D_oracle</code>; and
+        (4) our learned self-directed MLP controller (<code>E3_mlp</code>) matches peak excursion accuracy on held-out test
+        (<span class="highlight-pill acc">27.78%, +5.56% vs $S_0$/$P_0$</span>) with
+        <span class="highlight-pill speed">11.08 recurrent calls (&minus;24.5% compute vs $E_1$, 0% degradation)</span>.
       </p>
     </div>
   </div>
@@ -1160,8 +1163,46 @@
             <div><b>Held-Out Test (n=36):</b></div>
             <div>&bull; Fixed E1: 27.78% acc | 2 rescued, 0 degraded | 14.67 calls</div>
             <div style="color:#059669; font-weight:700;">&bull; Adaptive E2: 27.78% acc | 2 rescued, 0 degraded | 14.03 calls</div>
+            <div style="color:#4338ca; font-weight:700;">&bull; Learned E3_mlp: 27.78% acc | 2 rescued, 0 degraded | 11.08 calls (&minus;24.5%)</div>
             <div>&bull; Single S0: 22.22% acc | 0 rescued, 0 degraded | 7.33 calls</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Part 4: Self-Directed Learned Meta-Controller (E3_ridge, E3_mlp), Multi-Donor Selection, Selective Transfer -->
+    <div class="arch-block">
+      <div class="arch-step">
+        <span class="arch-step-num">Part 4</span>
+        <h3 class="arch-step-title">Self-Directed Latent Relocation Controller ($\pi_\psi$: $E_3$, $D_{\text{nearest}}$, $E_1^{\text{subspace}}$)</h3>
+      </div>
+      <div class="arch-row">
+        <div class="arch-text">
+          <p>
+            Beyond hand-tuned heuristics ($E_2$), TEBDİL trains a lightweight meta-controller $\pi_\psi(s_2)$ on counterfactual
+            trajectory rollouts from the disjoint training split ($n{=}36$ instances $\times 11$ candidate actions $= 396$ counterfactuals)
+            to predict the compute-penalized advantage over $\mathcal{A} = \{\text{CONTINUE}, \text{EXCURSION}(d, \alpha, \beta), \text{EXIT}\}$:
+          </p>
+          <div class="eq-block">
+            $$J(s_2, a) = \mathbb{I}[\hat{y}(a) = y^*] + 0.25 \cdot \tanh\!\big(\Delta \log p(\text{gold} \mid a)\big) - \lambda_{\text{cost}}\,\frac{C_{\text{extra}}(a)}{4}$$
+          </div>
+          <p>
+            At test time, $\pi_\psi$ extracts a 15-dimensional <b>strictly label-free</b> state-action vector $\phi(s_2, a)$
+            (step-1 and step-2 entropy/margin, stability $\Delta m_2^A$, relative donor divergence, cosine similarity, velocity ratio,
+            and a radial basis tent around $(\alpha{=}0.65, \beta{=}0.65)$). It gates <code>EXIT</code> on step-2 convergence ($m_2^A \ge 0.72$),
+            gates <code>EXCURSION</code> on residual uncertainty ($m_2^A \le 0.70, \mathcal{H}_2^A \ge 1.20$), and selects the highest-advantage action.
+          </p>
+        </div>
+        <div class="figure-card">
+          <h4 style="font-weight:800; font-size:1rem; color:var(--rm-ink); margin-bottom:0.65rem;">
+            <i class="fas fa-brain" style="color:var(--rm-primary); margin-right:0.4rem;"></i>
+            Phase 5&ndash;8 Self-Directed Findings
+          </h4>
+          <p style="font-size:0.88rem; color:var(--rm-sub); line-height:1.6;">
+            &bull; <b>3-Branch Donor Selection (Phase 5):</b> Selecting the nearest donor inside the trust region (<code>D_nearest</code>) reaches <b>33.33%</b> validation accuracy ($+11.11\%$ vs $S_0$), matching the post-hoc oracle <code>D_oracle</code>.<br>
+            &bull; <b>Subspace Curvature Transfer (Phase 6):</b> Projecting $V_2^{\mathrm{visit}} - V_2^A$ onto its top-$25\%$ singular vectors (<code>E1_subspace</code>) retains <b>100% of $E_1$'s accuracy gain</b> ($27.78\%$) while filtering $56\%$ of orthogonal noise.<br>
+            &bull; <b>Learned MLP Controller (Phase 7&ndash;8):</b> <code>E3_mlp</code> achieves <b>27.78%</b> held-out test accuracy with <b>0% degradation</b> at <b>11.08 recurrent calls</b> (&minus;24.5% compute vs $E_1$, &minus;19.6% vs $E_2$).
+          </p>
         </div>
       </div>
     </div>
@@ -1313,25 +1354,25 @@
 </section>
 
 <!-- ============================================================
-     MAIN EXPERIMENTAL RESULTS (PHASE 4 TEST + PHASE 2/3 VALIDATION)
+     MAIN EXPERIMENTAL RESULTS (PHASE 7-8 TEST + PHASE 5, 6, 3 VALIDATION)
 ============================================================ -->
 <section class="section rm-bg-soft" id="results">
   <div class="container is-max-desktop">
     <div class="has-text-centered" style="margin-bottom: 1.5rem;">
-      <span class="rm-eyebrow">Empirical Evaluation on ByteDance/Ouro-1.4B-Thinking</span>
-      <h2 class="title is-3 rm-section-title">Main Results &amp; Compute Frontier</h2>
+      <span class="rm-eyebrow">Empirical Evaluation on ByteDance/Ouro-1.4B-Thinking (1,408 Real Trajectories)</span>
+      <h2 class="title is-3 rm-section-title">Main Results, Self-Directed Controller &amp; Compute Frontier</h2>
       <p class="rm-section-sub">
-        All hyperparameters ($\eta{=}0.25, \alpha{=}0.5, \beta{=}0.5, t_{\mathrm{visit}}{=}2$, adaptive thresholds)
-        were frozen on the validation split before running Phase 4 on held-out test templates across seeds <code>42</code> and <code>1042</code>.
+        All controller parameters ($\psi$ in <code>E3_ridge</code> and <code>E3_mlp</code>) were trained on disjoint <code>train</code> counterfactuals ($n{=}36$)
+        and tuned on <code>validation</code> ($n{=}18$) before locked evaluation on held-out <code>test</code> ($n{=}36$, seeds <code>42</code> &amp; <code>1042</code>).
       </p>
     </div>
 
-    <!-- Held-Out Test Table -->
+    <!-- Held-Out Test Table (Phase 7-8: 14 Methods) -->
     <h4 style="font-weight:800; color:var(--rm-ink); margin-bottom:0.6rem;">
-      1. Held-Out Test Split Performance (Phase 4 &middot; $n = 36$ Instances across 3 Reasoning Families)
+      1. Held-Out Test Split Performance — Self-Directed Controller &amp; Baselines (Phase 7&ndash;8 &middot; $n = 36$ Instances, 14 Methods)
     </h4>
     <div class="rm-table-wrap">
-      <table class="rm-table" id="phase4TestTable"></table>
+      <table class="rm-table" id="phase78TestTable"></table>
     </div>
 
     <!-- Task Family Breakdown + Pareto Frontier SVG -->
@@ -1343,7 +1384,7 @@
         </h4>
         <svg id="paretoChartSvg" viewBox="0 0 440 250" style="width:100%; height:auto;"></svg>
         <p class="figure-caption" style="margin-top:0.5rem;">
-          <b>Pareto-Optimal Frontier:</b> <code>S0</code> ($7.33$ calls, $22.22\%$), <code>M1</code> ($12.83$ calls, $25.00\%$), and <code>E2</code> ($14.03$ calls, $27.78\%$). Note that <code>E2</code> surpasses even the non-interacting 2-branch oracle <code>P1</code> ($25.00\%$) due to emergent midpoint rescue on arithmetic.
+          <b>Self-Directed Efficiency:</b> <code>E3_mlp</code> ($11.08$ calls, $27.78\%$, $0\%$ degradation) matches the accuracy of fixed <code>E1</code> ($14.67$ calls) and heuristic <code>E2</code> ($13.78$ calls) while cutting recurrent block calls by <b>24.5%</b>. Naive early exit <code>EXIT_2</code> ($5.50$ calls) suffers $25\%$ degradation ($2/8$ base-correct lost).
         </p>
       </div>
 
@@ -1356,14 +1397,30 @@
           <table class="rm-table" id="familyBreakdownTable"></table>
         </div>
         <div class="insight-box" style="margin-top:0.8rem; font-size:0.85rem;">
-          <b>Key Observation:</b> Extra single-branch depth (<code>S1</code>) and confidence voting (<code>P0</code>) yield $0\%$ gain over <code>S0</code> ($22.22\%$). Linear update mixing (<code>M1</code>) rescues graph instance <code>graph_test_005</code> ($+2.78\%$), while only <code>E1</code> and <code>E2</code> rescue both <code>graph_test_005</code> and <code>arith_test_003</code> ($+5.56\%$).
+          <b>Key Observation:</b> <code>E3_mlp</code> achieves $50.00\%$ on 2-SAT Logic ($+8.33\%$) and $25.00\%$ on Graph Shortest Path ($+8.33\%$) with zero degradations across all 3 families, outperforming random control <code>RAND_CTRL</code> ($25.00\%$ at $14.17$ calls) and matching <code>E1</code>/<code>E2</code> at $3.6$ fewer block calls per problem.
         </div>
       </div>
     </div>
 
+    <!-- Phase 5 Multi-Branch Donor Selection Table -->
+    <h4 style="font-weight:800; color:var(--rm-ink); margin: 2.2rem 0 0.6rem;">
+      2. Multi-Branch Donor Selection (Phase 5 &middot; 3-Branch Pool: Primary $A$ + Donors $B, C$ &middot; $n = 18$)
+    </h4>
+    <div class="rm-table-wrap">
+      <table class="rm-table" id="phase5DonorTable"></table>
+    </div>
+
+    <!-- Phase 6 Selective Transfer & Subspace Projection Table -->
+    <h4 style="font-weight:800; color:var(--rm-ink); margin: 2.2rem 0 0.6rem;">
+      3. Selective Latent Transfer &amp; Top-$K$ Singular Subspace Projection (Phase 6 &middot; $n = 18$)
+    </h4>
+    <div class="rm-table-wrap">
+      <table class="rm-table" id="phase6SelectiveTable"></table>
+    </div>
+
     <!-- Validation 12-Method Causal Curvature Table -->
     <h4 style="font-weight:800; color:var(--rm-ink); margin: 2.2rem 0 0.6rem;">
-      2. Validation 12-Method Control &amp; Causal Curvature Ablation Suite (Phase 3 &middot; $n = 18$)
+      4. Validation 12-Method Control &amp; Causal Curvature Ablation Suite (Phase 3 &middot; $n = 18$)
     </h4>
     <div class="rm-table-wrap">
       <table class="rm-table" id="phase3ValidationTable"></table>
@@ -1492,16 +1549,20 @@
       <span class="rm-eyebrow">Full Artifact Transparency</span>
       <h2 class="title is-3 rm-section-title">Interactive Trace Explorer</h2>
       <p class="rm-section-sub">
-        Browse and filter real execution traces from <code>results/phase4_adaptive/traces.jsonl</code> and
-        <code>results/phase3_ablations/traces.jsonl</code>. Click any row to load it into the Live Simulator above.
+        Browse and filter real execution traces across all 5 evaluation suites (<code>phase7_8_controller_test</code>,
+        <code>phase5_donor</code>, <code>phase6_selective</code>, <code>phase4_adaptive</code>, and <code>phase3_ablations</code>).
+        Click any row to load it into the Live Simulator above.
       </p>
     </div>
 
     <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem; align-items:center; justify-content:space-between;">
       <div style="display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center;">
         <select id="explorerSplitFilter" class="stage-select">
-          <option value="test_phase4">Held-Out Test (Phase 4 &middot; 252 traces)</option>
-          <option value="validation_phase3">Validation Suite (Phase 3 &middot; 216 traces)</option>
+          <option value="test_phase7_8">Held-Out Controller Test (Phase 7&ndash;8 &middot; 504 traces)</option>
+          <option value="validation_phase5">3-Branch Donor Selection (Phase 5 &middot; 126 traces)</option>
+          <option value="validation_phase6">Selective Subspace Transfer (Phase 6 &middot; 126 traces)</option>
+          <option value="test_phase4">Held-Out Adaptive Test (Phase 4 &middot; 252 traces)</option>
+          <option value="validation_phase3">Validation Curvature Suite (Phase 3 &middot; 216 traces)</option>
         </select>
         <select id="explorerFamilyFilter" class="stage-select">
           <option value="all">All Task Families</option>
@@ -1511,13 +1572,24 @@
         </select>
         <select id="explorerMethodFilter" class="stage-select">
           <option value="all">All Methods</option>
-          <option value="S0">S0</option>
+          <option value="E3_mlp">E3_mlp (Learned MLP)</option>
+          <option value="E3_ridge">E3_ridge (Learned Ridge)</option>
+          <option value="E3_no_exit">E3_no_exit</option>
+          <option value="H_budget">H_budget</option>
+          <option value="EXIT_2">EXIT_2</option>
+          <option value="RAND_CTRL">RAND_CTRL</option>
+          <option value="D_nearest">D_nearest</option>
+          <option value="D_learned">D_learned</option>
+          <option value="D_oracle">D_oracle</option>
+          <option value="E1_subspace">E1_subspace</option>
+          <option value="E2">E2</option>
+          <option value="E1">E1</option>
+          <option value="M1">M1</option>
+          <option value="M0">M0</option>
           <option value="P0">P0</option>
           <option value="P1">P1</option>
-          <option value="M0">M0</option>
-          <option value="M1">M1</option>
-          <option value="E1">E1</option>
-          <option value="E2">E2</option>
+          <option value="S0">S0</option>
+          <option value="S1">S1</option>
           <option value="E1_no_curv">E1_no_curv</option>
           <option value="E1_rand_curv">E1_rand_curv</option>
         </select>
