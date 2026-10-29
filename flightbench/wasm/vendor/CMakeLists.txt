@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.20)
+project(FlightBenchWasm LANGUAGES C CXX)
+if(NOT EMSCRIPTEN)
+  message(FATAL_ERROR "Configure with emcmake cmake")
+endif()
+set(BUILD_PYTHON_MODULE OFF CACHE BOOL "" FORCE)
+set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+add_compile_options(-fexceptions)
+add_subdirectory(${JSBSIM_SOURCE} jsbsim EXCLUDE_FROM_ALL)
+add_executable(jsbsim_wasm bindings.cpp)
+target_link_libraries(jsbsim_wasm PRIVATE libJSBSim)
+target_compile_features(jsbsim_wasm PRIVATE cxx_std_17)
+set_target_properties(jsbsim_wasm PROPERTIES SUFFIX ".mjs")
+target_link_options(jsbsim_wasm PRIVATE --bind -fexceptions
+  -sMODULARIZE=1 -sEXPORT_ES6=1 -sALLOW_MEMORY_GROWTH=1
+  -sENVIRONMENT=web,worker,node -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=FS)

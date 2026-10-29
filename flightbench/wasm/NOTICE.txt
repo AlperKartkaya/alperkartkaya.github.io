@@ -1,0 +1,26 @@
+FlightBench browser runtime — source and licenses
+
+FlightBench's browser code and bindings use the repository's MIT license:
+vendor/FLIGHTBENCH-LICENSE.txt
+
+JSBSim 1.3.1 is separate third-party software, licensed LGPL-2.1-or-later.
+The C172x XML header declares GPL; model/data retain their original notices.
+The original model XML is readable in flightbench.json. No third-party notice is removed.
+
+The generated vendor/ directory ships with the browser runtime:
+  vendor/JSBSIM-COPYING.txt       JSBSim license text
+  vendor/jsbsim-source.tar.gz    original JSBSim 1.3.1 source, including model data
+  vendor/emscripten.patch        sole JSBSim source change (strerror_r portability)
+  vendor/bindings.cpp            small FlightBench Embind interface
+  vendor/CMakeLists.txt          relink/build settings
+  vendor/build.sh                pinned source checksum and rebuild commands
+
+Upstream source: https://github.com/JSBSim-Team/jsbsim/tree/v1.3.1
+Emscripten: https://github.com/emscripten-core/emsdk/tree/4.0.18
+
+Rebuild from the FlightBench repository using examples/wasm/build.sh with an
+activated Emscripten 4.0.18 SDK and CMake >= 3.20. The script fetches original
+source and applies emscripten.patch. To relink a modified JSBSim, configure the
+included CMakeLists.txt with -DJSBSIM_SOURCE=/absolute/path/to/your/source.
+Replace vendor/jsbsim_wasm.mjs and vendor/jsbsim_wasm.wasm with your outputs.
+No signature or runtime check prevents replacement with a modified library.
