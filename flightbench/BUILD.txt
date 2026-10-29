@@ -1,4 +1,4 @@
 FlightBench static distribution
-Source: https://github.com/AlperKartkaya/FlightBench/tree/b0c2e2fa13c7f10e88e81b49d3396f250b928b79
+Source: https://github.com/AlperKartkaya/FlightBench/tree/69ca72f629db6bce22dc29879d1ebe2feedea338
 Build: npm --prefix frontend run build:pages -- --base=/flightbench/ --outDir=dist-personal
 License and JSBSim source/relink files: wasm/NOTICE.txt and wasm/vendor/
